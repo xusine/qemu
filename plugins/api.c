@@ -37,6 +37,9 @@
 #include "qemu/osdep.h"
 #include "qemu/plugin.h"
 #include "qemu/log.h"
+#include "qemu/qemu-plugin.h"
+#include "sysemu/cpu-timers.h"
+#include "sysemu/cpus.h"
 #include "tcg/tcg.h"
 #include "exec/exec-all.h"
 #include "exec/ram_addr.h"
@@ -45,6 +48,7 @@
 #ifndef CONFIG_USER_ONLY
 #include "qemu/plugin-memory.h"
 #include "hw/boards.h"
+
 #else
 #include "qemu.h"
 #ifdef CONFIG_LINUX
@@ -442,3 +446,6 @@ uint64_t qemu_plugin_entry_code(void)
 #endif
     return entry;
 }
+
+
+

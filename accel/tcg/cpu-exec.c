@@ -906,6 +906,14 @@ static inline bool cpu_handle_interrupt(CPUState *cpu,
         return true;
     }
 
+    // Additional check for quantum.
+    if (cpu->env_ptr->quantum_budget_depleted == 1) {
+        if (cpu->exception_index == -1) {
+            cpu->exception_index = EXCP_INTERRUPT;
+        }
+        return true;
+    }
+
     return false;
 }
 
@@ -932,6 +940,12 @@ static inline void cpu_loop_exec_tb(CPUState *cpu, TranslationBlock *tb,
          * cpu_handle_interrupt.  cpu_handle_interrupt will also
          * clear cpu->icount_decr.u16.high.
          */
+        return;
+    }
+
+    if (!icount_enabled()) {
+        // nice. this is due to quantum deplete.
+        assert(cpu->env_ptr->quantum_budget_depleted == 1);
         return;
     }
 

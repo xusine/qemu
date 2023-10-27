@@ -1584,6 +1584,12 @@ static bool get_phys_addr_lpae(CPUARMState *env, S1Translate *ptw,
     uint64_t descriptor, new_descriptor;
     ARMSecuritySpace out_space;
 
+    // Added by Cyan. 
+    // Initialize the walk trace.
+    for (int i = 0; i < 4; i++) {
+        result->f.walk_trace[i] = -1;
+    }
+
     /* TODO: This code does not support shareability levels. */
     if (aarch64) {
         int ps;
@@ -1773,6 +1779,7 @@ static bool get_phys_addr_lpae(CPUARMState *env, S1Translate *ptw,
     if (!S1_ptw_translate(env, ptw, descaddr, fi)) {
         goto do_fault;
     }
+    result->f.walk_trace[level] = ptw->out_phys; // Added by Cyan. The page walk address is recorded, with PA.
     descriptor = arm_ldq_ptw(env, ptw, fi);
     if (fi->type != ARMFault_None) {
         goto do_fault;

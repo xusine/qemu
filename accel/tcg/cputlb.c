@@ -1273,6 +1273,11 @@ void tlb_set_page_full(CPUState *cpu, int mmu_idx,
     /* Now calculate the new entry */
     tn.addend = addend - addr_page;
 
+    /* Copy walk trace to TLB entrt. Added by Cyan */
+    for(int i = 0; i < 4; ++i){
+        tn.walk_trace_haddr[i] = full->walk_trace[i];
+    }
+
     tlb_set_compare(full, &tn, addr_page, read_flags,
                     MMU_INST_FETCH, prot & PAGE_EXEC);
 
@@ -1753,6 +1758,10 @@ bool tlb_plugin_lookup(CPUState *cpu, vaddr addr, int mmu_idx,
         } else {
             data->is_io = false;
             data->v.ram.hostaddr = (void *)((uintptr_t)addr + tlbe->addend);
+            // Added by Cyan: Now plugin can access the physical address and walk trace.
+            for (int i = 0; i < 4; ++i) {
+                data->v.ram.walk_trace[i] = tlbe->walk_trace_haddr[i];
+            }
         }
         return true;
     } else {

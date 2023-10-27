@@ -21,6 +21,7 @@
 #include "qapi/error.h"
 #include "qemu/lockable.h"
 #include "qemu/option.h"
+#include "qemu/qemu-plugin.h"
 #include "qemu/rcu_queue.h"
 #include "qemu/qht.h"
 #include "qemu/bitmap.h"
@@ -214,7 +215,7 @@ static int plugin_load(struct qemu_plugin_desc *desc, const qemu_info_t *info, E
                        "this QEMU supports only a minimum version of %d",
                        desc->path, version, QEMU_PLUGIN_MIN_VERSION);
             goto err_symbol;
-        } else if (version > QEMU_PLUGIN_VERSION) {
+        } else if (version > QEMU_PLUGIN_VERSION && version != QEMU_PLUGIN_CYAN_VERSION) {
             error_setg(errp, "Could not load plugin %s: plugin requires API version %d, but "
                        "this QEMU supports only up to version %d",
                        desc->path, version, QEMU_PLUGIN_VERSION);

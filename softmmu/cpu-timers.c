@@ -109,6 +109,8 @@ void cpu_enable_ticks(void)
     seqlock_write_lock(&timers_state.vm_clock_seqlock,
                        &timers_state.vm_clock_lock);
     if (!timers_state.cpu_ticks_enabled) {
+        // save the snapshot vm_clock before it is cleaned.
+        timers_state.vm_clock_snapshot = timers_state.cpu_clock_offset;
         timers_state.cpu_ticks_offset -= cpu_get_host_ticks();
         timers_state.cpu_clock_offset -= get_clock();
         timers_state.cpu_ticks_enabled = 1;
@@ -274,4 +276,14 @@ void cpu_timers_init(void)
     vmstate_register(NULL, 0, &vmstate_timers, &timers_state);
 
     cpu_throttle_init();
+}
+
+// Functions below are defined by Shanqing for exporting time information to the plugin.
+
+int64_t cpu_get_snapshoted_vm_clock(void) {
+    return timers_state.vm_clock_snapshot;
+}
+
+bool cpu_is_tick_enabled(void) {
+    return timers_state.cpu_ticks_enabled;
 }

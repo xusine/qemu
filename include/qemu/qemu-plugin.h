@@ -53,6 +53,8 @@ extern QEMU_PLUGIN_EXPORT int qemu_plugin_version;
 
 #define QEMU_PLUGIN_VERSION 1
 
+#define QEMU_PLUGIN_CYAN_VERSION 9527
+
 /**
  * struct qemu_info_t - system information for plugins
  *
@@ -663,5 +665,171 @@ uint64_t qemu_plugin_end_code(void);
  * user-mode. Currently returns 0 for system emulation.
  */
 uint64_t qemu_plugin_entry_code(void);
+
+#define CYAN_API
+#define AARCH64_ONLY_API
+
+/**
+ * qemu_plugin_set_running_flag() - setting the "running" flag of the current CPU
+ * 
+ * @is_running: The value of the flag.
+ * 
+ * Some synchronization mechanism (e.g., exclusive execution) checks 
+ * this flag to make sure all CPUs are not executing instructions and 
+ * wait for all CPUs to be idle.
+ *  
+ * In you plugin are using locks and synchronization which can block 
+ * execution, you should set the running flag to false before being 
+ * blocked to avoid deadlocks.
+ */
+CYAN_API void qemu_plugin_set_running_flag(bool is_running);
+
+
+/**
+ * qemu_plugin_is_current_cpu_can_run() - check whether the current CPU can 
+ * still continue to run instructions, i.e., not stopped by other threads like quitting.
+ * 
+ * Returns true if the current cpu can still run.
+ * 
+ * This function is a wrapper of function `cpu_can_run`.
+ */
+CYAN_API bool qemu_plugin_is_current_cpu_can_run(void);
+
+/**
+ * qemu_plugin_register_virtual_time_cb() - register the method for CPU to calculate the time.
+ * 
+ * @callback: The callback to provide virtual time
+*/
+CYAN_API void qemu_plugin_register_virtual_time_cb(int64_t (*callback)(void));
+
+
+/**
+ * qemu_plugin_get_cpu_clock() - return the CPU clock time calculated by the realtime elapsing.
+ * 
+ * Useful when defining the new virtual time function.
+ */
+CYAN_API int64_t qemu_plugin_get_cpu_clock(void);
+
+
+/**
+ * qemu_plugin_get_snapshoted_vm_clock() - return the VM clock time when the snapshot is taken.
+ * 
+ * Useful when defining the new virtual time function.
+ */
+CYAN_API int64_t qemu_plugin_get_snapshoted_vm_clock(void);
+
+/**
+ * qemu_plugin_cpu_is_tick_enabled() - return whether the CPU tick is enabled.
+ * 
+ * Useful when defining the new virtual time function.
+ */
+
+CYAN_API bool qemu_plugin_cpu_is_tick_enabled(void);
+
+/**
+ * qemu_plugin_read_cpu_integer_register - returns the value of the given integer register.
+ * 
+ * This function can be only called from threads that run a vCPU. Otherwise, it will trigger assertion failure.
+ */
+
+CYAN_API AARCH64_ONLY_API uint64_t qemu_plugin_read_cpu_integer_register(int reg_index);
+
+
+
+/**
+ * qemu_plugin_read_ttbr_el1 - returns the value of the ttbr_el1.
+ * 
+ * @which_ttbr: 0 for ttbr0_el1, 1 for ttbr1_el1. Other values will trigger assertion failure.
+ * 
+ * This function can be only called from threads that run a vCPU. Otherwise, it will trigger assertion failure.
+ */
+CYAN_API AARCH64_ONLY_API uint64_t qemu_plugin_read_ttbr_el1(int which_ttbr);
+
+
+
+/**
+ * qemu_plugin_read_tcr_el1 - returns the value of tcr_el1.
+ * 
+ * This function can be only called from threads that run a vCPU. Otherwise, it will trigger assertion failure.
+ */
+
+CYAN_API AARCH64_ONLY_API uint64_t qemu_plugin_read_tcr_el1(void);
+
+
+/**
+ * qemu_plugin_hwaddr_translate_walk_trace - returns the trace of walking the page table to get the specific translation.
+ * 
+ * The returned array has 4 elements. Every element is the hardware address of a specific page table entry.
+ * For huge pages or translation error, you will see -1 in the array ahead of time. 
+ * 
+ * This function can be only called from threads that run a vCPU. Otherwise, it will return NULL.
+ * 
+ * The function reads the recorded trace in the TLB entry. There is a better way to optimize the storage.
+ *
+ */
+CYAN_API AARCH64_ONLY_API const uint64_t *qemu_plugin_hwaddr_translate_walk_trace(const struct qemu_plugin_hwaddr *hwaddr);
+
+
+/**
+ * qemu_plugin_read_physical_memory - returns the value of the given physical memory address.
+ * 
+ * This function calls cpu_physical_memory_rw to read the physical memory. 
+ * 
+ * This function will not trigger memory access plugin.
+ */
+
+CYAN_API void qemu_plugin_read_physical_memory(uint64_t physical_address, uint64_t size, void *buf);
+
+
+/**
+ * qemu_plugin_write_physical_memory - write the value to the given physical memory address.
+ * 
+ * This function calls the cpu_physical_memory_rw to write the physical memory.
+ * 
+ * This function will not trigger memory access plugin.
+ */
+
+CYAN_API void qemu_plugin_write_physical_memory(uint64_t physical_address, uint64_t size, const void *buf);
+
+/**
+ * typedef qemu_plugin_vcpu_branch_resolved_cb_t - vcpu callback
+ * @vcpu_index: the current vcpu context
+ * @pc: the PC of the current instruction.
+ * @target: the target address of the branch.
+ * @hint_flags: the hint flags of the branch, including the following possible values:
+ *    - 0x0: conditional branch, taken
+ *    - 0x1: conditional branch, not taken
+ *    - 0x2: function call
+ *    - 0x3: return
+ *    - 0x4: non-conditional branch
+ * was registered.
+ */
+CYAN_API AARCH64_ONLY_API typedef void (*qemu_plugin_vcpu_branch_resolved_cb_t)(unsigned int vcpu_index, uint64_t pc, uint64_t target, uint32_t hint_flags);
+
+
+/**
+ * qemu_plugin_register_vcpu_branch_resolved_cb() - register a vCPU branch resolved callback
+ * @cb: callback function
+ *
+ * The @cb function is called every time a branch is resolved.
+ * 
+ * returns true if the callback is registered successfully. Please note at currently at most one callback can be registered.
+ *
+ */
+CYAN_API AARCH64_ONLY_API bool qemu_plugin_register_vcpu_branch_resolved_cb(qemu_plugin_vcpu_branch_resolved_cb_t cb);
+
+/**
+ * qemu_plugin_read_pc_vpn() - return the 4KB virtual page number of the current PC. 
+ * 
+ * The reason why we return VPN is because QEMU does not frequent update the PC in its CPUArchState. 
+ * I still don't know why. It may be related to the performance impact but I don't know where I should see the update logic.
+ * However, the PC should be updated when the PC is pointing to a different page. In this case, no chaining or patching of TB is allowed. 
+ * 
+ * This function can be only called from threads that run a vCPU. Otherwise, it will trigger assertion failure.
+ * 
+ * To get the full PC, you need to also store the PC's offset as the parameter when registering the callback. 
+ * 
+ */
+CYAN_API uint64_t qemu_plugin_read_pc_vpn(void);
 
 #endif /* QEMU_QEMU_PLUGIN_H */

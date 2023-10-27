@@ -36,6 +36,11 @@
 #include "tcg-accel-ops.h"
 #include "tcg-accel-ops-mttcg.h"
 
+#include "qemu/dynamic_barrier.h"
+
+const uint64_t QUANTUM_SIZE = 1000000; // 1M
+dynamic_barrier_polling_t quantum_barrier;
+
 typedef struct MttcgForceRcuNotifier {
     Notifier notifier;
     CPUState *cpu;
@@ -79,11 +84,24 @@ static void *mttcg_cpu_thread_fn(void *arg)
     qemu_mutex_lock_iothread();
     qemu_thread_get_self(cpu->thread);
 
+    // register the current thread to the barrier.
+    dynamic_barrier_polling_increase_by_1(&quantum_barrier);
+
+    printf("Quantum Count: %lu \n", QUANTUM_SIZE);
+
     cpu->thread_id = qemu_get_thread_id();
     cpu->can_do_io = 1;
+
     current_cpu = cpu;
     cpu_thread_signal_created(cpu);
     qemu_guest_random_seed_thread_part2(cpu->random_seed);
+
+    // Now we want to fix the core affinity of the current thread for better experiments.
+    // The thread is bind to the core 0.
+    // cpu_set_t cpuset;
+    // CPU_ZERO(&cpuset);
+    // CPU_SET(cpu->cpu_index, &cpuset);
+    // pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
 
     /* process any pending work */
     cpu->exit_request = 1;
@@ -92,7 +110,19 @@ static void *mttcg_cpu_thread_fn(void *arg)
         if (cpu_can_run(cpu)) {
             int r;
             qemu_mutex_unlock_iothread();
+cpu_resume_from_quantum:
             r = tcg_cpus_exec(cpu);
+            // check the quantum budget and sync before doing I/O operation.
+            if (r == EXCP_INTERRUPT && cpu->env_ptr->quantum_budget_depleted) {
+                while (cpu->env_ptr->quantum_budget <= 0) {
+                    // We need to wait for all the vCPUs to finish their quantum.
+                    dynamic_barrier_polling_wait(&quantum_barrier); // I cannot directly go to sleep. I have to periodically check something.
+                    cpu->env_ptr->quantum_budget += QUANTUM_SIZE; // 1M
+                }
+                // We need to reset the quantum budget of the current vCPU.
+                cpu->env_ptr->quantum_budget_depleted = false;
+                goto cpu_resume_from_quantum;
+            }
             qemu_mutex_lock_iothread();
             switch (r) {
             case EXCP_DEBUG:
@@ -122,6 +152,10 @@ static void *mttcg_cpu_thread_fn(void *arg)
     qemu_mutex_unlock_iothread();
     rcu_remove_force_rcu_notifier(&force_rcu.notifier);
     rcu_unregister_thread();
+
+    // resign the current thread from the barrier.
+    dynamic_barrier_polling_decrease_by_1(&quantum_barrier);
+
     return NULL;
 }
 
@@ -147,4 +181,8 @@ void mttcg_start_vcpu_thread(CPUState *cpu)
 
     qemu_thread_create(cpu->thread, thread_name, mttcg_cpu_thread_fn,
                        cpu, QEMU_THREAD_JOINABLE);
+}
+
+void mttcg_initialize_barrier(void) {
+    dynamic_barrier_polling_init(&quantum_barrier, 0);
 }

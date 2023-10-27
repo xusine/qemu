@@ -797,6 +797,15 @@ typedef struct CPUArchState {
     /* Linux syscall tagged address support */
     bool tagged_addr_enable;
 #endif
+
+    // Added by Cyan for the additional callback system.
+    struct {
+        void (*branch_resolved)(unsigned int vcpu_index, uint64_t pc, uint64_t target, uint32_t hint_flags);
+    } cyan_callbacks;
+
+    int64_t quantum_budget;
+    uint64_t quantum_required; // Amount of quantum required for the current tb. This is dynamically update during the execution.
+    bool quantum_budget_depleted;
 } CPUARMState;
 
 static inline void set_feature(CPUARMState *env, int feature)
@@ -3278,6 +3287,16 @@ void arm_register_el_change_hook(ARMCPU *cpu, ARMELChangeHookFn *hook, void
  * Rebuild the cached TBFLAGS for arbitrary changed processor state.
  */
 void arm_rebuild_hflags(CPUARMState *env);
+
+
+/**
+ * arm_cpu_register_cyan_branch_cb: Register a callback for branch resolution.
+ * 
+ * This function is added by Cyan.
+ * 
+ * @cb: The callback function.
+ */
+bool arm_cpu_register_cyan_branch_cb(void (*cb)(unsigned int vcpu_index, uint64_t pc, uint64_t target, uint32_t hint_flags));
 
 /**
  * aa32_vfp_dreg:

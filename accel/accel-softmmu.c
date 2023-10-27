@@ -61,6 +61,12 @@ void accel_setup_post(MachineState *ms)
     }
 }
 
+static int64_t (*vclock_function_outside)(void);
+
+void register_virtual_clock_cb(int64_t (*callback)(void)) {
+    vclock_function_outside = callback;
+}
+
 /* initialize the arch-independent accel operation interfaces */
 void accel_init_ops_interfaces(AccelClass *ac)
 {
@@ -89,6 +95,11 @@ void accel_init_ops_interfaces(AccelClass *ac)
     if (ops->ops_init) {
         ops->ops_init(ops);
     }
+
+    if (vclock_function_outside != NULL) {
+        ops->get_virtual_clock = vclock_function_outside;
+    }
+
     cpus_register_accel(ops);
 }
 

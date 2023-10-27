@@ -19,7 +19,7 @@
 #ifndef EXEC_TLB_COMMON_H
 #define EXEC_TLB_COMMON_H 1
 
-#define CPU_TLB_ENTRY_BITS 5
+#define CPU_TLB_ENTRY_BITS 6
 
 /* Minimalized TLB entry for use by TCG fast path. */
 typedef union CPUTLBEntry {
@@ -32,6 +32,8 @@ typedef union CPUTLBEntry {
          * use the corresponding iotlb value.
          */
         uintptr_t addend;
+        /* The following members are added by Cyan to record the translation traces. */
+        uintptr_t walk_trace_haddr[4];
     };
     /*
      * Padding to get a power of two size, as well as index

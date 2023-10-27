@@ -138,6 +138,14 @@ typedef struct CPUTLBEntryFull {
 #ifdef TARGET_PAGE_ENTRY_EXTRA
     TARGET_PAGE_ENTRY_EXTRA
 #endif
+
+    /**
+     * The physical memory access while walking. It is useful for cache simulation.
+     * 
+     * Added by Cyan.
+     */
+    hwaddr walk_trace[4];
+
 } CPUTLBEntryFull;
 #endif /* CONFIG_SOFTMMU */
 

@@ -82,6 +82,17 @@ int64_t cpu_get_ticks(void);
  */
 int64_t cpu_get_clock(void);
 
+/**
+ * Return the most recent snapshoted virtual clock. 
+ * This function provides the base for the external clock source.
+ */
+int64_t cpu_get_snapshoted_vm_clock(void);
+
+/**
+ * Return whether the CPU tick is stopped. 
+ */
+bool cpu_is_tick_enabled(void);
+
 void qemu_timer_notify_cb(void *opaque, QEMUClockType type);
 
 /* get the VIRTUAL clock and VM elapsed ticks via the cpus accel interface */

@@ -22,6 +22,7 @@ struct qemu_plugin_hwaddr {
         } io;
         struct {
             void *hostaddr;
+            hwaddr walk_trace[4]; // Cyan: this is a dirty implementation. :( For architecture with five-level PTs, we have to update the translation.
         } ram;
     } v;
 };

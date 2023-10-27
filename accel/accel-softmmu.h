@@ -10,6 +10,7 @@
 #ifndef ACCEL_SOFTMMU_H
 #define ACCEL_SOFTMMU_H
 
+void register_virtual_clock_cb(int64_t (*callback)(void));
 void accel_init_ops_interfaces(AccelClass *ac);
 
 #endif /* ACCEL_SOFTMMU_H */
