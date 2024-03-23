@@ -47,6 +47,7 @@
 #include "hw/hw.h"
 #include "trace.h"
 #include "qemu/dynamic_barrier.h"
+#include "sysemu/quantum.h"
 
 #ifdef CONFIG_LINUX
 
@@ -424,12 +425,17 @@ void qemu_wait_io_event(CPUState *cpu)
             slept = true;
             qemu_plugin_vcpu_idle_cb(cpu);
         }
-        // Before going to sleep, you should let the quantum barrier know that I will not be involved.
-        assert(dynamic_barrier_polling_decrease_by_1(&quantum_barrier) == 0);
+        if (quantum_enabled()) {
+            // Before going to sleep, you should let the quantum barrier know that I will not be involved.
+            assert(dynamic_barrier_polling_decrease_by_1(&quantum_barrier) == 0);
+        }
+        
         qemu_cond_wait(cpu->halt_cond, &qemu_global_mutex);
-        // After sleep, you should let the quantum barrier know that I will be involved.
-        dynamic_barrier_polling_increase_by_1(&quantum_barrier);
 
+        if (quantum_enabled()) {
+            // After sleep, you should let the quantum barrier know that I will be involved.
+            dynamic_barrier_polling_increase_by_1(&quantum_barrier);
+        }
     }
     if (slept) {
         qemu_plugin_vcpu_resume_cb(cpu);

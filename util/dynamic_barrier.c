@@ -3,6 +3,9 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "qemu/osdep.h"
+#include "sysemu/quantum.h"
+
 static uint64_t get_current_timestamp_ns(void) {
     struct timespec ts;
     // Get the current time
@@ -112,9 +115,11 @@ int dynamic_barrier_polling_init(dynamic_barrier_polling_t *barrier, int initial
     barrier->count = 0;
     barrier->generation = 0;
 
-    pthread_t tid;
-    pthread_create(&tid, NULL, report_time_peridically, barrier);
-
+    if (quantum_enabled()) {
+        pthread_t tid;
+        pthread_create(&tid, NULL, report_time_peridically, barrier);
+    }
+    
     return 0;
 }
 
@@ -160,6 +165,10 @@ int dynamic_barrier_polling_decrease_by_1(dynamic_barrier_polling_t *barrier) {
     if (atomic_fetch_sub(&barrier->threshold, 1) == atomic_load(&barrier->count) + 1) {
         // This thread actually makes the threshold smaller than the count.
         // In case it triggers the threshold, it should release all the waiting threads.
+
+        if (!quantum_enabled()) {
+            assert(atomic_load(&barrier->count) == 0);
+        }
 
         // reset the waiting count.
         atomic_store(&barrier->count, 0);

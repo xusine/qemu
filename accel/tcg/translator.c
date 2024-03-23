@@ -15,6 +15,7 @@
 #include "exec/plugin-gen.h"
 #include "tcg/tcg-op-common.h"
 #include "internal.h"
+#include "sysemu/quantum.h"
 
 static void set_can_do_io(DisasContextBase *db, bool val)
 {
@@ -75,11 +76,13 @@ static TCGOp *gen_tb_start(DisasContextBase *db, uint32_t cflags)
         tcg_ctx->exitreq_label = gen_new_label();
         tcg_gen_brcondi_i32(TCG_COND_LT, count, 0, tcg_ctx->exitreq_label);
 
-        // also generate the quantum check here.
-        TCGv_i32 quantum_depleted = tcg_temp_new_i32();
-        gen_helper_check_and_deduce_quantum(quantum_depleted, cpu_env);
-        // quantum_depleted is 1 if the quantum is depleted. Then we jump to the exitreq_label.
-        tcg_gen_brcondi_i32(TCG_COND_NE, quantum_depleted, 0, tcg_ctx->exitreq_label);
+        if (quantum_enabled()) {
+            // also generate the quantum check here.
+            TCGv_i32 quantum_depleted = tcg_temp_new_i32();
+            gen_helper_check_and_deduce_quantum(quantum_depleted, cpu_env);
+            // quantum_depleted is 1 if the quantum is depleted. Then we jump to the exitreq_label.
+            tcg_gen_brcondi_i32(TCG_COND_NE, quantum_depleted, 0, tcg_ctx->exitreq_label);
+        }
     }
 
     if (cflags & CF_USE_ICOUNT) {
@@ -152,8 +155,14 @@ void translator_loop(CPUState *cpu, TranslationBlock *tb, int *max_insns,
 
     /* Start translating.  */
     icount_start_insn = gen_tb_start(db, cflags);
-    gen_helper_set_quantum_requirement_example(cpu_env, tcg_constant_i32(0));
-    TCGOp *quantum_start_insn = tcg_last_op();
+
+    // For quantum deduce instruction.
+    TCGOp *quantum_start_insn = NULL;
+    if (quantum_enabled()) {
+        gen_helper_set_quantum_requirement_example(cpu_env, tcg_constant_i32(0));
+        quantum_start_insn = tcg_last_op();
+    }
+    
     ops->tb_start(db, cpu);
     tcg_debug_assert(db->is_jmp == DISAS_NEXT);  /* no early exit */
 
@@ -213,9 +222,12 @@ void translator_loop(CPUState *cpu, TranslationBlock *tb, int *max_insns,
     // Update the quantum deduce instruction. 
     // This should be updated inside the plugin during execution.
     // Here we use instruction count as the simplest example. 
-    tcg_set_insn_param(quantum_start_insn, 1,
-                           tcgv_i32_arg(tcg_constant_i32(db->num_insns)));
-
+    if (quantum_enabled()) {
+        assert(quantum_start_insn != NULL);
+        tcg_set_insn_param(quantum_start_insn, 1,
+                            tcgv_i32_arg(tcg_constant_i32(db->num_insns)));
+    }
+    
     /* Emit code to exit the TB, as indicated by db->is_jmp.  */
     ops->tb_stop(db, cpu);
     gen_tb_end(tb, cflags, icount_start_insn, db->num_insns);

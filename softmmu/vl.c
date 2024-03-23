@@ -45,6 +45,7 @@
 #include "sysemu/seccomp.h"
 #include "sysemu/tcg.h"
 #include "sysemu/xen.h"
+#include "sysemu/quantum.h"
 
 #include "qemu/error-report.h"
 #include "qemu/sockets.h"
@@ -446,6 +447,20 @@ static QemuOptsList qemu_icount_opts = {
         }, {
             .name = "rrsnapshot",
             .type = QEMU_OPT_STRING,
+        },
+        { /* end of list */ }
+    },
+};
+
+static QemuOptsList qemu_quantum_opts = {
+    .name = "quantum",
+    .implied_opt_name = "size",
+    .merge_lists = true,
+    .head = QTAILQ_HEAD_INITIALIZER(qemu_quantum_opts.head),
+    .desc = {
+        {
+            .name = "size",
+            .type = QEMU_OPT_NUMBER,
         },
         { /* end of list */ }
     },
@@ -2205,6 +2220,12 @@ static int do_configure_icount(void *opaque, QemuOpts *opts, Error **errp)
     return 0;
 }
 
+static int do_configure_quantum(void *opaque, QemuOpts *opts, Error **errp)
+{
+    quantum_configure(opts, errp);
+    return 0;
+}
+
 static int accelerator_set_property(void *opaque,
                                 const char *name, const char *value,
                                 Error **errp)
@@ -2274,6 +2295,9 @@ static void configure_accelerators(const char *progname)
     qemu_opts_foreach(qemu_find_opts("icount"),
                       do_configure_icount, NULL, &error_fatal);
 
+    qemu_opts_foreach(qemu_find_opts("quantum"), 
+                      do_configure_quantum, NULL, &error_fatal);
+
     if (QTAILQ_EMPTY(&qemu_accel_opts.head)) {
         char **accel_list, **tmp;
 
@@ -2335,6 +2359,16 @@ static void configure_accelerators(const char *progname)
 
     if (icount_enabled() && !tcg_enabled()) {
         error_report("-icount is not allowed with hardware virtualization");
+        exit(1);
+    }
+
+    if (icount_enabled() && quantum_enabled()) {
+        error_report("-icount and -quantum are mutually exclusive");
+        exit(1);
+    }
+
+    if (quantum_enabled() && !qemu_tcg_mttcg_enabled()) {
+        error_report("-quantum is only supported with Multithreaded TCG");
         exit(1);
     }
 }
@@ -2705,6 +2739,7 @@ void qemu_init(int argc, char **argv)
     qemu_add_opts(&qemu_name_opts);
     qemu_add_opts(&qemu_numa_opts);
     qemu_add_opts(&qemu_icount_opts);
+    qemu_add_opts(&qemu_quantum_opts);
     qemu_add_opts(&qemu_semihosting_config_opts);
     qemu_add_opts(&qemu_fw_cfg_opts);
     qemu_add_opts(&qemu_action_opts);
@@ -3380,6 +3415,13 @@ void qemu_init(int argc, char **argv)
                 icount_opts = qemu_opts_parse_noisily(qemu_find_opts("icount"),
                                                       optarg, true);
                 if (!icount_opts) {
+                    exit(1);
+                }
+                break;
+            case QEMU_OPTION_quantum:
+                opts = qemu_opts_parse_noisily(qemu_find_opts("quantum"),
+                                               optarg, false);
+                if (!opts) {
                     exit(1);
                 }
                 break;

@@ -6,13 +6,16 @@
 #include "exec/helper-proto.h"
 #include "cpu.h"
 #include "hw/core/cpu.h"
+#include "sysemu/quantum.h"
 
 void HELPER(deduce_quantum)(CPUArchState *env) {
+    assert(quantum_enabled());
     env->quantum_budget -= env->quantum_required;
     env->quantum_required = 0;
 }
 
 uint32_t HELPER(check_and_deduce_quantum)(CPUArchState *env) {
+    assert(quantum_enabled());
     env->quantum_budget -= env->quantum_required;
     env->quantum_required = 0;
     if (env->quantum_budget <= 0) {
@@ -23,5 +26,6 @@ uint32_t HELPER(check_and_deduce_quantum)(CPUArchState *env) {
 }
 
 void HELPER(set_quantum_requirement_example)(CPUArchState *env, uint32_t requirement) {
+    assert(quantum_enabled());
     env->quantum_required = requirement;
 }

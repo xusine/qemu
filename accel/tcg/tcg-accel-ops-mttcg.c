@@ -37,8 +37,9 @@
 #include "tcg-accel-ops-mttcg.h"
 
 #include "qemu/dynamic_barrier.h"
+#include "sysemu/quantum.h"
 
-const uint64_t QUANTUM_SIZE = 1000000; // 1M
+// const uint64_t QUANTUM_SIZE = 1000000; // 1M
 dynamic_barrier_polling_t quantum_barrier;
 
 typedef struct MttcgForceRcuNotifier {
@@ -85,9 +86,11 @@ static void *mttcg_cpu_thread_fn(void *arg)
     qemu_thread_get_self(cpu->thread);
 
     // register the current thread to the barrier.
-    dynamic_barrier_polling_increase_by_1(&quantum_barrier);
+    if (quantum_enabled()) {
+        dynamic_barrier_polling_increase_by_1(&quantum_barrier);
+        printf("Quantum Count: %lu \n", quantum_size);
+    }
 
-    printf("Quantum Count: %lu \n", QUANTUM_SIZE);
 
     cpu->thread_id = qemu_get_thread_id();
     cpu->can_do_io = 1;
@@ -113,11 +116,11 @@ static void *mttcg_cpu_thread_fn(void *arg)
 cpu_resume_from_quantum:
             r = tcg_cpus_exec(cpu);
             // check the quantum budget and sync before doing I/O operation.
-            if (r == EXCP_INTERRUPT && cpu->env_ptr->quantum_budget_depleted) {
+            if (quantum_enabled() && r == EXCP_INTERRUPT && cpu->env_ptr->quantum_budget_depleted) {
                 while (cpu->env_ptr->quantum_budget <= 0) {
                     // We need to wait for all the vCPUs to finish their quantum.
                     dynamic_barrier_polling_wait(&quantum_barrier); // I cannot directly go to sleep. I have to periodically check something.
-                    cpu->env_ptr->quantum_budget += QUANTUM_SIZE; // 1M
+                    cpu->env_ptr->quantum_budget += quantum_size;
                 }
                 // We need to reset the quantum budget of the current vCPU.
                 cpu->env_ptr->quantum_budget_depleted = false;
@@ -154,7 +157,9 @@ cpu_resume_from_quantum:
     rcu_unregister_thread();
 
     // resign the current thread from the barrier.
-    dynamic_barrier_polling_decrease_by_1(&quantum_barrier);
+    if (quantum_enabled()) {
+        dynamic_barrier_polling_decrease_by_1(&quantum_barrier);
+    }
 
     return NULL;
 }

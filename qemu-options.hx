@@ -4588,6 +4588,13 @@ SRST
     specifies the snapshot name used to load the initial VM state.
 ERST
 
+DEF("quantum", HAS_ARG, QEMU_OPTION_quantum, \
+    "-quantum size=N \n" \
+    "               Enable quantum to confine the relative speed of each core. \n" \
+    "               When the quantum size is specified, all cores synchronize with a barrier when they execute N instructions. \n" \
+    "               0 or no option means the quantum is not enabled. \n", QEMU_ARCH_ARM
+)
+
 DEF("watchdog-action", HAS_ARG, QEMU_OPTION_watchdog_action, \
     "-watchdog-action reset|shutdown|poweroff|inject-nmi|pause|debug|none\n" \
     "                action when watchdog fires [default=reset]\n",

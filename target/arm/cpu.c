@@ -47,6 +47,7 @@
 #include "disas/capstone.h"
 #include "fpu/softfloat.h"
 #include "cpregs.h"
+#include "sysemu/quantum.h"
 
 static void arm_cpu_set_pc(CPUState *cs, vaddr value)
 {
@@ -560,7 +561,7 @@ static void arm_cpu_reset_hold(Object *obj)
         env->cyan_callbacks.branch_resolved = cyan_branch_cb;
 
         // for quantum
-        env->quantum_budget = 1024;
+        env->quantum_budget = quantum_size;
         env->quantum_required = 0;
         env->quantum_budget_depleted = false;
     }
