@@ -798,11 +798,6 @@ typedef struct CPUArchState {
     bool tagged_addr_enable;
 #endif
 
-    // Added by Cyan for the additional callback system.
-    struct {
-        void (*branch_resolved)(unsigned int vcpu_index, uint64_t pc, uint64_t target, uint32_t hint_flags);
-    } cyan_callbacks;
-
     int64_t quantum_budget;
     uint64_t quantum_required; // Amount of quantum required for the current tb. This is dynamically update during the execution.
     bool quantum_budget_depleted;

@@ -695,12 +695,16 @@ CYAN_API void qemu_plugin_set_running_flag(bool is_running);
  */
 CYAN_API bool qemu_plugin_is_current_cpu_can_run(void);
 
+CYAN_API typedef int64_t (*qemu_plugin_virtual_time_callback_t) (void);
+
 /**
  * qemu_plugin_register_virtual_time_cb() - register the method for CPU to calculate the time.
  * 
  * @callback: The callback to provide virtual time
+ * 
+ * Returns true if the registration is successful. Please note that only one callback can be registered.
 */
-CYAN_API void qemu_plugin_register_virtual_time_cb(int64_t (*callback)(void));
+CYAN_API bool qemu_plugin_register_virtual_time_cb(qemu_plugin_virtual_time_callback_t callback);
 
 
 /**
@@ -804,8 +808,9 @@ CYAN_API void qemu_plugin_write_physical_memory(uint64_t physical_address, uint6
  *    - 0x4: non-conditional branch
  * was registered.
  */
-CYAN_API AARCH64_ONLY_API typedef void (*qemu_plugin_vcpu_branch_resolved_cb_t)(unsigned int vcpu_index, uint64_t pc, uint64_t target, uint32_t hint_flags);
 
+
+CYAN_API AARCH64_ONLY_API typedef void (*qemu_plugin_vcpu_branch_resolved_cb_t)(unsigned int vcpu_index, uint64_t pc, uint64_t target, uint32_t hint_flags);
 
 /**
  * qemu_plugin_register_vcpu_branch_resolved_cb() - register a vCPU branch resolved callback
@@ -831,5 +836,20 @@ CYAN_API AARCH64_ONLY_API bool qemu_plugin_register_vcpu_branch_resolved_cb(qemu
  * 
  */
 CYAN_API uint64_t qemu_plugin_read_pc_vpn(void);
+
+
+CYAN_API typedef void (*qemu_plugin_savevm_cb_t)(const char *);
+
+/**
+ * qemu_plugin_register_savevm_cb() - register a savevm callback
+ * @cb: callback function
+ * 
+ * The @cb function is called after the VM state is saved. 
+ * The exact time of the callback is after the VM state is saved to the qcow2 file and before the VM is resumed.
+ * 
+ * returns true if the callback is registered successfully. Please note at currently at most one callback can be registered.
+ */
+CYAN_API bool qemu_plugin_register_savevm_cb(qemu_plugin_savevm_cb_t cb);
+
 
 #endif /* QEMU_QEMU_PLUGIN_H */

@@ -70,6 +70,8 @@
 #include "sysemu/qtest.h"
 #include "options.h"
 
+#include "qemu/plugin-cyan.h"
+
 const unsigned int postcopy_ram_discard_version;
 
 /* Subcommands for QEMU_VM_COMMAND */
@@ -3016,6 +3018,12 @@ bool save_snapshot(const char *name, bool overwrite, const char *vmstate,
         ret = ret2;
         goto the_end;
     }
+
+    // TODO: Add a plugin callback here to dump snapshot as well.
+    if (cyan_savevm_cb) {
+        cyan_savevm_cb(name);
+    }
+
 
     /* The bdrv_all_create_snapshot() call that follows acquires the AioContext
      * for itself.  BDRV_POLL_WHILE() does not support nested locking because

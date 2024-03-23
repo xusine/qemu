@@ -57,4 +57,5 @@
   qemu_plugin_read_tcr_el1;
   qemu_plugin_register_vcpu_branch_resolved_cb;
   qemu_plugin_read_pc_vpn;
+  qemu_plugin_register_savevm_cb;
 };

@@ -28,10 +28,13 @@
 #include "hw/boards.h"
 #include "softmmu/timers-state.h"
 #include "exec/cpu-common.h"
+#include "qemu/plugin-cyan.h"
 
+// All cyan callback functions
+qemu_plugin_virtual_time_callback_t cyan_vclock_cb = NULL;
+qemu_plugin_vcpu_branch_resolved_cb_t cyan_br_cb = NULL;
+qemu_plugin_savevm_cb_t cyan_savevm_cb = NULL; 
 
-
-void register_virtual_clock_cb(int64_t (*callback)(void));
 
 void qemu_plugin_set_running_flag(bool is_running) {
   CPUState *cpu = current_cpu;
@@ -49,8 +52,12 @@ bool qemu_plugin_is_current_cpu_can_run(void) {
   return cpu_can_run(current_cpu);
 }
 
-void qemu_plugin_register_virtual_time_cb(int64_t (*callback)(void)) {
-  register_virtual_clock_cb(callback);
+bool qemu_plugin_register_virtual_time_cb(qemu_plugin_virtual_time_callback_t callback) {
+  if (cyan_vclock_cb) {
+    return false;
+  }
+  cyan_vclock_cb = callback;
+  return true;
 }
 
 int64_t qemu_plugin_get_cpu_clock(void) { return cpu_get_clock(); }
@@ -118,7 +125,11 @@ void qemu_plugin_write_physical_memory(uint64_t physical_address, uint64_t size,
 }
 
 bool qemu_plugin_register_vcpu_branch_resolved_cb(qemu_plugin_vcpu_branch_resolved_cb_t cb) {
-  return arm_cpu_register_cyan_branch_cb(cb);
+  if (cyan_br_cb) {
+    return false;
+  }
+  cyan_br_cb = cb;
+  return true;
 }
 
 // uint8_t qemu_plugin_get_cvnz(void) {
@@ -166,6 +177,14 @@ uint64_t qemu_plugin_read_pc_vpn(void) {
   g_assert(cpu != NULL);
 
   return (uint64_t)cpu->env_ptr->pc >> 12;
+}
+
+bool qemu_plugin_register_savevm_cb(qemu_plugin_savevm_cb_t cb) {
+  if (cyan_savevm_cb) {
+    return false;
+  }
+  cyan_savevm_cb = cb;
+  return true;
 }
 
 #endif

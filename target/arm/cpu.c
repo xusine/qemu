@@ -205,16 +205,6 @@ static void cp_reg_check_reset(gpointer key, gpointer value,  gpointer opaque)
     assert(oldvalue == newvalue);
 }
 
-static void (*cyan_branch_cb)(unsigned int vcpu_index, uint64_t pc, uint64_t target, uint32_t hint_flags) = NULL;
-
-bool arm_cpu_register_cyan_branch_cb(void (*cb)(unsigned int vcpu_index, uint64_t pc, uint64_t target, uint32_t hint_flags)) {
-    if (cyan_branch_cb != NULL) {
-        return false;
-    }
-    cyan_branch_cb = cb;
-    return true;
-}
-
 static void arm_cpu_reset_hold(Object *obj)
 {
     CPUState *s = CPU(obj);
@@ -557,8 +547,6 @@ static void arm_cpu_reset_hold(Object *obj)
         hw_watchpoint_update_all(cpu);
 
         arm_rebuild_hflags(env);
-
-        env->cyan_callbacks.branch_resolved = cyan_branch_cb;
 
         // for quantum
         env->quantum_budget = quantum_size;
