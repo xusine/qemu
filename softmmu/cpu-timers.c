@@ -27,6 +27,7 @@
 #include "migration/vmstate.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
+#include "qemu/plugin-cyan.h"
 #include "sysemu/cpus.h"
 #include "qemu/main-loop.h"
 #include "qemu/option.h"
@@ -75,6 +76,10 @@ int64_t cpu_get_clock_locked(void)
 {
     int64_t time;
 
+    if (cyan_cpu_clock_cb) {
+        return cyan_cpu_clock_cb();
+    }
+
     time = timers_state.cpu_clock_offset;
     if (timers_state.cpu_ticks_enabled) {
         time += get_clock();
@@ -110,8 +115,9 @@ void cpu_enable_ticks(void)
                        &timers_state.vm_clock_lock);
     if (!timers_state.cpu_ticks_enabled) {
         // save the snapshot vm_clock before it is cleaned.
-        timers_state.vm_clock_snapshot = timers_state.cpu_clock_offset;
+        timers_state.virtual_clock_snapshot = timers_state.cpu_clock_offset;
         timers_state.cpu_ticks_offset -= cpu_get_host_ticks();
+        // this value is not used when `cyan_cpu_clock_cb` is set and the tick is enabled.
         timers_state.cpu_clock_offset -= get_clock();
         timers_state.cpu_ticks_enabled = 1;
     }
@@ -131,6 +137,7 @@ void cpu_disable_ticks(void)
     if (timers_state.cpu_ticks_enabled) {
         timers_state.cpu_ticks_offset += cpu_get_host_ticks();
         timers_state.cpu_clock_offset = cpu_get_clock_locked();
+        // record the time of the guest system. 
         timers_state.cpu_ticks_enabled = 0;
     }
     seqlock_write_unlock(&timers_state.vm_clock_seqlock,
@@ -281,7 +288,7 @@ void cpu_timers_init(void)
 // Functions below are defined by Shanqing for exporting time information to the plugin.
 
 int64_t cpu_get_snapshoted_vm_clock(void) {
-    return timers_state.vm_clock_snapshot;
+    return timers_state.virtual_clock_snapshot;
 }
 
 bool cpu_is_tick_enabled(void) {

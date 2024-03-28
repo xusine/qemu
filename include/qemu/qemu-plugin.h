@@ -695,16 +695,18 @@ CYAN_API void qemu_plugin_set_running_flag(bool is_running);
  */
 CYAN_API bool qemu_plugin_is_current_cpu_can_run(void);
 
-CYAN_API typedef int64_t (*qemu_plugin_virtual_time_callback_t) (void);
+CYAN_API typedef int64_t (*qemu_plugin_cpu_clock_callback_t) (void);
 
 /**
- * qemu_plugin_register_virtual_time_cb() - register the method for CPU to calculate the time.
+ * qemu_plugin_register_cpu_clock_cb() - register the method for CPU to calculate the time.
  * 
  * @callback: The callback to provide virtual time
  * 
  * Returns true if the registration is successful. Please note that only one callback can be registered.
+ * 
+ * This function overrides the internal QEMU function `cpu_get_clock_locked`, and it cannot be used together with the icount mode.
 */
-CYAN_API bool qemu_plugin_register_virtual_time_cb(qemu_plugin_virtual_time_callback_t callback);
+CYAN_API bool qemu_plugin_register_cpu_clock_cb(qemu_plugin_cpu_clock_callback_t callback);
 
 
 /**
@@ -721,6 +723,19 @@ CYAN_API int64_t qemu_plugin_get_cpu_clock(void);
  * Useful when defining the new virtual time function.
  */
 CYAN_API int64_t qemu_plugin_get_snapshoted_vm_clock(void);
+
+
+CYAN_API typedef void (*qemu_plugin_vm_clock_reset_cb) (void);
+
+/**
+ * qemu_plugin_register_vm_clock_reset_cb() - register the callback for resetting the VM clock.
+ * 
+ * @callback: The callback to reset the VM clock.
+ * 
+ * Returns true if the registration is successful. Please note that only one callback can be registered.
+*/
+
+CYAN_API bool qemu_plugin_register_vm_clock_reset_cb(qemu_plugin_vm_clock_reset_cb callback);
 
 /**
  * qemu_plugin_cpu_is_tick_enabled() - return whether the CPU tick is enabled.

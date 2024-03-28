@@ -15,7 +15,7 @@
 // - Callback for savevm (after the VM state is saved).
 
 // The callback for virtual time calculation.
-extern qemu_plugin_virtual_time_callback_t cyan_vclock_cb;
+extern qemu_plugin_cpu_clock_callback_t cyan_cpu_clock_cb;
 
 // The callback for branch resolution.
 extern qemu_plugin_vcpu_branch_resolved_cb_t cyan_br_cb;

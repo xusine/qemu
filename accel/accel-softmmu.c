@@ -91,10 +91,6 @@ void accel_init_ops_interfaces(AccelClass *ac)
         ops->ops_init(ops);
     }
 
-    if (cyan_vclock_cb != NULL) {
-        ops->get_virtual_clock = cyan_vclock_cb;
-    }
-
     cpus_register_accel(ops);
 }
 
