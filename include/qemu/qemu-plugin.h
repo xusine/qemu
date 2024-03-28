@@ -724,19 +724,6 @@ CYAN_API int64_t qemu_plugin_get_cpu_clock(void);
  */
 CYAN_API int64_t qemu_plugin_get_snapshoted_vm_clock(void);
 
-
-CYAN_API typedef void (*qemu_plugin_vm_clock_reset_cb) (void);
-
-/**
- * qemu_plugin_register_vm_clock_reset_cb() - register the callback for resetting the VM clock.
- * 
- * @callback: The callback to reset the VM clock.
- * 
- * Returns true if the registration is successful. Please note that only one callback can be registered.
-*/
-
-CYAN_API bool qemu_plugin_register_vm_clock_reset_cb(qemu_plugin_vm_clock_reset_cb callback);
-
 /**
  * qemu_plugin_cpu_is_tick_enabled() - return whether the CPU tick is enabled.
  * 
