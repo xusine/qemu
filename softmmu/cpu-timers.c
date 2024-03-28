@@ -116,6 +116,11 @@ void cpu_enable_ticks(void)
     if (!timers_state.cpu_ticks_enabled) {
         // save the snapshot vm_clock before it is cleaned.
         timers_state.virtual_clock_snapshot = timers_state.cpu_clock_offset;
+        
+        if (cyan_snapshot_cpu_clock_udpate_cb) {
+            cyan_snapshot_cpu_clock_udpate_cb();
+        }
+
         timers_state.cpu_ticks_offset -= cpu_get_host_ticks();
         // this value is not used when `cyan_cpu_clock_cb` is set and the tick is enabled.
         timers_state.cpu_clock_offset -= get_clock();

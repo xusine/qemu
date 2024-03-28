@@ -700,7 +700,7 @@ CYAN_API typedef int64_t (*qemu_plugin_cpu_clock_callback_t) (void);
 /**
  * qemu_plugin_register_cpu_clock_cb() - register the method for CPU to calculate the time.
  * 
- * @callback: The callback to provide virtual time
+ * @callback: The callback to provide cpu clock.
  * 
  * Returns true if the registration is successful. Please note that only one callback can be registered.
  * 
@@ -712,17 +712,30 @@ CYAN_API bool qemu_plugin_register_cpu_clock_cb(qemu_plugin_cpu_clock_callback_t
 /**
  * qemu_plugin_get_cpu_clock() - return the CPU clock time calculated by the realtime elapsing.
  * 
- * Useful when defining the new virtual time function.
+ * Useful when defining the new cpu clock function.
  */
 CYAN_API int64_t qemu_plugin_get_cpu_clock(void);
 
 
 /**
- * qemu_plugin_get_snapshoted_vm_clock() - return the VM clock time when the snapshot is taken.
+ * qemu_plugin_get_snapshot_cpu_clock() - return the CPU clock when the snapshot is taken. Otherwise, it is zero.
  * 
- * Useful when defining the new virtual time function.
+ * Useful when defining the new cpu clock function.
  */
-CYAN_API int64_t qemu_plugin_get_snapshoted_vm_clock(void);
+CYAN_API int64_t qemu_plugin_get_snapshot_cpu_clock(void);
+
+
+CYAN_API typedef void (*qemu_plugin_snapshot_cpu_clock_update_cb) (void);
+
+/**
+ * qemu_plugin_register_snapshot_cpu_clock_update_cb() - register the callback for updating the snapshot time.
+ * 
+ * @callback: The callback to reset the VM clock.
+ * 
+ * Returns true if the registration is successful. Please note that only one callback can be registered.
+*/
+
+CYAN_API bool qemu_plugin_register_snapshot_cpu_clock_update_cb(qemu_plugin_snapshot_cpu_clock_update_cb callback);
 
 /**
  * qemu_plugin_cpu_is_tick_enabled() - return whether the CPU tick is enabled.

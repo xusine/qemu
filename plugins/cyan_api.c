@@ -34,6 +34,7 @@
 qemu_plugin_cpu_clock_callback_t cyan_cpu_clock_cb = NULL;
 qemu_plugin_vcpu_branch_resolved_cb_t cyan_br_cb = NULL;
 qemu_plugin_savevm_cb_t cyan_savevm_cb = NULL; 
+qemu_plugin_snapshot_cpu_clock_update_cb cyan_snapshot_cpu_clock_udpate_cb = NULL;
 
 
 void qemu_plugin_set_running_flag(bool is_running) {
@@ -56,15 +57,28 @@ bool qemu_plugin_register_cpu_clock_cb(qemu_plugin_cpu_clock_callback_t callback
   if (cyan_cpu_clock_cb) {
     return false;
   }
+
   assert(!icount_enabled());
+  
   cyan_cpu_clock_cb = callback;
   return true;
 }
 
 int64_t qemu_plugin_get_cpu_clock(void) { return cpu_get_clock(); }
 
-int64_t qemu_plugin_get_snapshoted_vm_clock(void) {
+int64_t qemu_plugin_get_snapshot_cpu_clock(void) {
   return cpu_get_snapshoted_vm_clock();
+}
+
+bool qemu_plugin_register_snapshot_cpu_clock_update_cb(qemu_plugin_snapshot_cpu_clock_update_cb cb) {
+  if (cyan_snapshot_cpu_clock_udpate_cb) {
+    return false;
+  }
+
+  assert(!icount_enabled());
+  
+  cyan_snapshot_cpu_clock_udpate_cb = cb;
+  return true;
 }
 
 bool qemu_plugin_cpu_is_tick_enabled(void) { return cpu_is_tick_enabled(); }

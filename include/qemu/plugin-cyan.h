@@ -23,4 +23,7 @@ extern qemu_plugin_vcpu_branch_resolved_cb_t cyan_br_cb;
 // The callback for savevm (after the VM state is saved).
 extern qemu_plugin_savevm_cb_t cyan_savevm_cb;
 
+// The callback for the moment when the snapshot CPU clock is updated.
+extern qemu_plugin_snapshot_cpu_clock_update_cb cyan_snapshot_cpu_clock_udpate_cb;
+
 #endif
