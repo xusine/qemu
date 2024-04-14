@@ -149,6 +149,12 @@ cpu_resume_from_quantum:
 
         qatomic_set_mb(&cpu->exit_request, 0);
         qemu_wait_io_event(cpu);
+
+        if (quantum_enabled()) {
+            // Well, after waken from the idle state, we should fill the quantum budget to this CPU. 
+            // After all, the idle state should also remove the quantum budget.
+            cpu->env_ptr->quantum_budget = quantum_size;
+        }
     } while (!cpu->unplug || cpu_can_run(cpu));
 
     tcg_cpus_destroy(cpu);
