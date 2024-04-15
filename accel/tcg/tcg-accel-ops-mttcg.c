@@ -86,7 +86,7 @@ static void *mttcg_cpu_thread_fn(void *arg)
     qemu_thread_get_self(cpu->thread);
 
     // register the current thread to the barrier.
-    if (quantum_enabled()) {
+    if (is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
         dynamic_barrier_polling_increase_by_1(&quantum_barrier);
         printf("Quantum Count: %lu \n", quantum_size);
     }
@@ -116,7 +116,7 @@ static void *mttcg_cpu_thread_fn(void *arg)
 cpu_resume_from_quantum:
             r = tcg_cpus_exec(cpu);
             // check the quantum budget and sync before doing I/O operation.
-            if (quantum_enabled() && r == EXCP_INTERRUPT && cpu->env_ptr->quantum_budget_depleted) {
+            if (is_vcpu_affiliated_with_quantum(cpu->cpu_index) && r == EXCP_INTERRUPT && cpu->env_ptr->quantum_budget_depleted) {
                 while (cpu->env_ptr->quantum_budget <= 0) {
                     // We need to wait for all the vCPUs to finish their quantum.
                     dynamic_barrier_polling_wait(&quantum_barrier); // I cannot directly go to sleep. I have to periodically check something.
@@ -150,7 +150,7 @@ cpu_resume_from_quantum:
         qatomic_set_mb(&cpu->exit_request, 0);
         qemu_wait_io_event(cpu);
 
-        if (quantum_enabled()) {
+        if (is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
             // Well, after waken from the idle state, we should fill the quantum budget to this CPU. 
             // After all, the idle state should also remove the quantum budget.
             cpu->env_ptr->quantum_budget = quantum_size;
@@ -163,7 +163,7 @@ cpu_resume_from_quantum:
     rcu_unregister_thread();
 
     // resign the current thread from the barrier.
-    if (quantum_enabled()) {
+    if (is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
         dynamic_barrier_polling_decrease_by_1(&quantum_barrier);
     }
 

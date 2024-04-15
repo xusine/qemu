@@ -4589,10 +4589,11 @@ SRST
 ERST
 
 DEF("quantum", HAS_ARG, QEMU_OPTION_quantum, \
-    "-quantum size=N \n" \
+    "-quantum size=N[,range=0-N] \n" \
     "               Enable quantum to confine the relative speed of each core. \n" \
     "               When the quantum size is specified, all cores synchronize with a barrier when they execute N instructions. \n" \
-    "               0 or no option means the quantum is not enabled. \n", QEMU_ARCH_ARM
+    "               0 or no option means the quantum is not enabled. \n" \
+    "               The range parameter specify which range of cores are enabled for quantum. By default, all cores are enabled.", QEMU_ARCH_ARM
 )
 
 DEF("watchdog-action", HAS_ARG, QEMU_OPTION_watchdog_action, \

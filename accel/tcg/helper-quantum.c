@@ -16,6 +16,11 @@ void HELPER(deduce_quantum)(CPUArchState *env) {
 
 uint32_t HELPER(check_and_deduce_quantum)(CPUArchState *env) {
     assert(quantum_enabled());
+
+    if (!is_vcpu_affiliated_with_quantum(current_cpu->cpu_index)) {
+        return false;
+    }
+
     env->quantum_budget -= env->quantum_required;
     env->quantum_required = 0;
     if (env->quantum_budget <= 0) {

@@ -425,14 +425,14 @@ void qemu_wait_io_event(CPUState *cpu)
             slept = true;
             qemu_plugin_vcpu_idle_cb(cpu);
         }
-        if (quantum_enabled()) {
+        if (is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
             // Before going to sleep, you should let the quantum barrier know that I will not be involved.
             assert(dynamic_barrier_polling_decrease_by_1(&quantum_barrier) == 0);
         }
         
         qemu_cond_wait(cpu->halt_cond, &qemu_global_mutex);
 
-        if (quantum_enabled()) {
+        if (is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
             // After sleep, you should let the quantum barrier know that I will be involved.
             dynamic_barrier_polling_increase_by_1(&quantum_barrier);
         }

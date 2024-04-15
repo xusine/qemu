@@ -462,6 +462,10 @@ static QemuOptsList qemu_quantum_opts = {
             .name = "size",
             .type = QEMU_OPT_NUMBER,
         },
+        {
+            .name = "range",
+            .type = QEMU_OPT_STRING
+        },
         { /* end of list */ }
     },
 };

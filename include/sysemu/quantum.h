@@ -10,6 +10,8 @@
 
 void quantum_configure(QemuOpts *opts, Error **errp);
 
+bool is_vcpu_affiliated_with_quantum(uint64_t cpu_idx);
+
 #ifdef CONFIG_TCG
 extern uint64_t quantum_size;
 #define quantum_enabled() (quantum_size != 0)
