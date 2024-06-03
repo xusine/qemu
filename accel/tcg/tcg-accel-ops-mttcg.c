@@ -165,6 +165,15 @@ cpu_resume_from_quantum:
     // resign the current thread from the barrier.
     if (is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
         dynamic_barrier_polling_decrease_by_1(&quantum_barrier);
+
+        // also, print the histogram.
+        // open a log file.
+        char log_name[100];
+        snprintf(log_name, 100, "quantum_histogram_%d.log", cpu->cpu_index);
+
+        FILE *fp = fopen(log_name, "w");
+        print_histogram(quantum_barrier.histogram[cpu->cpu_index], fp);
+        fclose(fp);
     }
 
     return NULL;
