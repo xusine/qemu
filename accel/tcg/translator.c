@@ -16,6 +16,7 @@
 #include "tcg/tcg-op-common.h"
 #include "internal.h"
 #include "sysemu/quantum.h"
+#include "tcg/tcg.h"
 
 static void set_can_do_io(DisasContextBase *db, bool val)
 {
@@ -76,14 +77,14 @@ static TCGOp *gen_tb_start(DisasContextBase *db, uint32_t cflags)
         tcg_ctx->exitreq_label = gen_new_label();
         tcg_gen_brcondi_i32(TCG_COND_LT, count, 0, tcg_ctx->exitreq_label);
 
-        if (quantum_enabled()) {
+        if (coarse_grained_quantum_enabled()) {
             // also generate the quantum check here.
             TCGv_i32 quantum_depleted = tcg_temp_new_i32();
             gen_helper_check_and_deduce_quantum(quantum_depleted, cpu_env);
             // quantum_depleted is 1 if the quantum is depleted. Then we jump to the exitreq_label.
             tcg_gen_brcondi_i32(TCG_COND_NE, quantum_depleted, 0, tcg_ctx->exitreq_label);
         }
-    }
+    } 
 
     if (cflags & CF_USE_ICOUNT) {
         tcg_gen_st16_i32(count, cpu_env,
@@ -114,6 +115,7 @@ static void gen_tb_end(const TranslationBlock *tb, uint32_t cflags,
     }
 
     if (tcg_ctx->exitreq_label) {
+        // well, now it is time to break the TB and back to the upper-level loop.
         gen_set_label(tcg_ctx->exitreq_label);
         tcg_gen_exit_tb(tb, TB_EXIT_REQUESTED);
     }
@@ -144,7 +146,11 @@ void translator_loop(CPUState *cpu, TranslationBlock *tb, int *max_insns,
     db->pc_next = pc;
     db->is_jmp = DISAS_NEXT;
     db->num_insns = 0;
-    db->max_insns = *max_insns;
+    if (single_instruction_quantum_enabled()) {
+        db->max_insns = 1; // only one instruction is allowed.
+    } else {
+        db->max_insns = *max_insns;
+    }
     db->singlestep_enabled = cflags & CF_SINGLE_STEP;
     db->saved_can_do_io = -1;
     db->host_addr[0] = host_pc;
@@ -158,7 +164,7 @@ void translator_loop(CPUState *cpu, TranslationBlock *tb, int *max_insns,
 
     // For quantum deduce instruction.
     TCGOp *quantum_start_insn = NULL;
-    if (quantum_enabled()) {
+    if (coarse_grained_quantum_enabled()) {
         gen_helper_set_quantum_requirement_example(cpu_env, tcg_constant_i32(0));
         quantum_start_insn = tcg_last_op();
     }
@@ -211,6 +217,11 @@ void translator_loop(CPUState *cpu, TranslationBlock *tb, int *max_insns,
             break;
         }
 
+        if (single_instruction_quantum_enabled()) {
+            // no more translation is possible. 
+            break;
+        }
+
         /* Stop translation if the output buffer is full,
            or we have executed all of the allowed instructions.  */
         if (tcg_op_buf_full() || db->num_insns >= db->max_insns) {
@@ -222,7 +233,8 @@ void translator_loop(CPUState *cpu, TranslationBlock *tb, int *max_insns,
     // Update the quantum deduce instruction. 
     // This should be updated inside the plugin during execution.
     // Here we use instruction count as the simplest example. 
-    if (quantum_enabled()) {
+    // There is no need to deduce the quantum if the quantum is only one instruction.
+    if (coarse_grained_quantum_enabled()) {
         assert(quantum_start_insn != NULL);
         tcg_set_insn_param(quantum_start_insn, 1,
                             tcgv_i32_arg(tcg_constant_i32(db->num_insns)));

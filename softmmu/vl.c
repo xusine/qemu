@@ -2366,12 +2366,14 @@ static void configure_accelerators(const char *progname)
         exit(1);
     }
 
-    if (icount_enabled() && quantum_enabled()) {
+    bool quantum_enabled = (coarse_grained_quantum_enabled() || single_instruction_quantum_enabled());
+
+    if (icount_enabled() && quantum_enabled) {
         error_report("-icount and -quantum are mutually exclusive");
         exit(1);
     }
 
-    if (quantum_enabled() && !qemu_tcg_mttcg_enabled()) {
+    if (quantum_enabled && !qemu_tcg_mttcg_enabled()) {
         error_report("-quantum is only supported with Multithreaded TCG");
         exit(1);
     }

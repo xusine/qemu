@@ -14,9 +14,11 @@ bool is_vcpu_affiliated_with_quantum(uint64_t cpu_idx);
 
 #ifdef CONFIG_TCG
 extern uint64_t quantum_size;
-#define quantum_enabled() (quantum_size != 0)
+#define coarse_grained_quantum_enabled() (quantum_size > 1)
+#define single_instruction_quantum_enabled() (quantum_size == 1)
 #else
-#define quantum_enabled() 0
+#define coarse_grained_quantum_enabled() 0
+#define single_instruction_quantum_enabled() 0
 #endif
 
 

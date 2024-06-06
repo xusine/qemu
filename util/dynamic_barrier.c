@@ -121,7 +121,7 @@ int dynamic_barrier_polling_init(dynamic_barrier_polling_t *barrier, int initial
     barrier->count = 0;
     barrier->generation = 0;
 
-    if (quantum_enabled()) {
+    if (coarse_grained_quantum_enabled()) {
         // pthread_t tid;
         // pthread_create(&tid, NULL, report_time_peridically, barrier);
     }
@@ -191,7 +191,9 @@ int dynamic_barrier_polling_decrease_by_1(dynamic_barrier_polling_t *barrier) {
         // This thread actually makes the threshold smaller than the count.
         // In case it triggers the threshold, it should release all the waiting threads.
 
-        if (!quantum_enabled()) {
+        bool quantum_enabled = coarse_grained_quantum_enabled() || single_instruction_quantum_enabled();
+
+        if (!quantum_enabled) {
             assert(atomic_load(&barrier->count) == 0);
         }
 
