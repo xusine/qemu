@@ -29,7 +29,7 @@ void quantum_configure(QemuOpts *opts, Error **errp) {
 }
 
 inline bool is_vcpu_affiliated_with_quantum(uint64_t cpu_idx) {
-    if (!coarse_grained_quantum_enabled() || single_instruction_quantum_enabled()) {
+    if (!coarse_grained_quantum_enabled() || !single_instruction_quantum_enabled()) {
         return false;
     }
 
