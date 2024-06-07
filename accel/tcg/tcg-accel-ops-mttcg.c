@@ -116,11 +116,13 @@ static void *mttcg_cpu_thread_fn(void *arg)
 cpu_resume_from_quantum:
             r = tcg_cpus_exec(cpu);
             // check the quantum budget and sync before doing I/O operation.
-            if (is_vcpu_affiliated_with_quantum(cpu->cpu_index) && r == EXCP_INTERRUPT && cpu->env_ptr->quantum_budget_depleted) {
-                while (cpu->env_ptr->quantum_budget <= 0) {
-                    // We need to wait for all the vCPUs to finish their quantum.
-                    dynamic_barrier_polling_wait(&quantum_barrier); // I cannot directly go to sleep. I have to periodically check something.
-                    cpu->env_ptr->quantum_budget += quantum_size;
+            if (r == EXCP_INTERRUPT && cpu->env_ptr->quantum_budget_depleted) {
+                if (is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
+                    while (cpu->env_ptr->quantum_budget <= 0) {
+                        // We need to wait for all the vCPUs to finish their quantum.
+                        dynamic_barrier_polling_wait(&quantum_barrier); // I cannot directly go to sleep. I have to periodically check something.
+                        cpu->env_ptr->quantum_budget += quantum_size;
+                    }
                 }
                 // We need to reset the quantum budget of the current vCPU.
                 cpu->env_ptr->quantum_budget_depleted = false;
