@@ -39,6 +39,12 @@
 #include "qemu/dynamic_barrier.h"
 #include "sysemu/quantum.h"
 
+// This function is used to get the current clock of the CPU.
+// It is helpful when we want to know the current target clock. 
+// We use this function to get the delay of the I/O events in terms of the target clock.
+// After we know the latency, we use it to update the quantum budget.
+int64_t cpu_get_clock_locked(void);
+
 // const uint64_t QUANTUM_SIZE = 1000000; // 1M
 dynamic_barrier_polling_t quantum_barrier;
 
@@ -150,12 +156,24 @@ cpu_resume_from_quantum:
         }
 
         qatomic_set_mb(&cpu->exit_request, 0);
+        // get the target time now. (we don't need lock here, because we have the I/O lock.)
+        uint64_t current_cpu_clock = cpu_get_clock_locked();
         qemu_wait_io_event(cpu);
+        uint64_t current_cpu_clock_after_io = cpu_get_clock_locked();
 
         if (is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
-            // Well, after waken from the idle state, we should fill the quantum budget to this CPU. 
-            // After all, the idle state should also remove the quantum budget.
-            cpu->env_ptr->quantum_budget = quantum_size;
+            uint64_t io_latency = current_cpu_clock_after_io - current_cpu_clock;
+
+            // We assume that the thread doing I/O operation update the quantum in the same way as other threads. 
+            // This latency may also go across multiple quanta, but this part can be cancelled, because we assume they wait for the quantum barrier.
+            // Now, the problem is that remaining. This part should be deducted from the quantum budget.
+            uint64_t io_latency_after_deducing_quantum = io_latency % quantum_size;
+
+            // This part should be deducted from the quantum budget.
+            // It will be deduced when the next basic block starts.
+            cpu->env_ptr->quantum_required += io_latency_after_deducing_quantum;
+
+            // We don't wait here, because we still hold the I/O lock. Instead, we wait when we enter the TCG loop.
         }
     } while (!cpu->unplug || cpu_can_run(cpu));
 
