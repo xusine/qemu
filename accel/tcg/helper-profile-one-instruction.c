@@ -4,7 +4,7 @@
 #include "exec/helper-proto.h"
 #include "cpu.h"
 
-#include <intrin.h>
+#include <x86intrin.h>
 #include "qemu/histogram.h"
 
 
