@@ -299,8 +299,12 @@ DEF_HELPER_FLAGS_4(gvec_leu64, TCG_CALL_NO_RWG, void, ptr, ptr, ptr, i32)
 
 DEF_HELPER_FLAGS_5(gvec_bitsel, TCG_CALL_NO_RWG, void, ptr, ptr, ptr, ptr, i32)
 
-// The following function is added by Cyan to support the quantum.
+// The following function are added by Cyan to support the quantum.
 DEF_HELPER_FLAGS_1(deduce_quantum, TCG_CALL_NO_RWG, void, env)
 DEF_HELPER_FLAGS_1(check_and_deduce_quantum, TCG_CALL_NO_RWG, i32, env)
 DEF_HELPER_FLAGS_2(set_quantum_requirement_example, TCG_CALL_NO_RWG, void, env, i32)
 DEF_HELPER_FLAGS_1(deplete_quantum_budget, TCG_CALL_NO_RWG, void, env)
+
+// The following functions are added by Cyan to support taking time difference of one instruction.
+DEF_HELPER_FLAGS_1(note_current_time, TCG_CALL_NO_RWG, void, env)
+DEF_HELPER_FLAGS_1(calculate_time_difference, TCG_CALL_NO_RWG, void, env)

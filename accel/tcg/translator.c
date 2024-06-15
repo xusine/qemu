@@ -197,7 +197,12 @@ void translator_loop(CPUState *cpu, TranslationBlock *tb, int *max_insns,
             /* Accept I/O on the last instruction.  */
             set_can_do_io(db, true);
         }
+
+        gen_helper_note_current_time(cpu_env);
+
         ops->translate_insn(db, cpu);
+
+        gen_helper_calculate_time_difference(cpu_env);
 
         /*
          * We can't instrument after instructions that change control

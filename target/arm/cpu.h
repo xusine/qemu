@@ -26,6 +26,7 @@
 #include "cpu-qom.h"
 #include "exec/cpu-defs.h"
 #include "qapi/qapi-types-common.h"
+#include "qemu/histogram.h"
 
 /* ARM processors have a weak memory model */
 #define TCG_GUEST_DEFAULT_MO      (0)
@@ -800,7 +801,11 @@ typedef struct CPUArchState {
 
     int64_t quantum_budget;
     uint64_t quantum_required; // Amount of quantum required for the current tb. This is dynamically update during the execution.
-    bool quantum_budget_depleted;
+    int quantum_budget_depleted;
+
+    uint64_t current_instruction_rdtsc;
+
+    time_histogram_t *instruction_histogram;
 } CPUARMState;
 
 static inline void set_feature(CPUARMState *env, int feature)

@@ -18,6 +18,7 @@
  * <http://www.gnu.org/licenses/gpl-2.0.html>
  */
 
+#include "qemu/histogram.h"
 #include "qemu/osdep.h"
 #include "qemu/qemu-print.h"
 #include "qemu/timer.h"
@@ -551,7 +552,9 @@ static void arm_cpu_reset_hold(Object *obj)
         // for quantum
         env->quantum_budget = quantum_size;
         env->quantum_required = 0;
-        env->quantum_budget_depleted = false;
+        env->quantum_budget_depleted = 0;
+
+        env->instruction_histogram = create_histogram(50, 0, 1250);
     }
 }
 
