@@ -42,7 +42,7 @@ typedef struct {
 
 int dynamic_barrier_polling_init(dynamic_barrier_polling_t *barrier, int initial_threshold);
 int dynamic_barrier_polling_destroy(dynamic_barrier_polling_t *barrier);
-int dynamic_barrier_polling_wait(dynamic_barrier_polling_t *barrier);
+uint64_t dynamic_barrier_polling_wait(dynamic_barrier_polling_t *barrier); // return the current quantum generation after waiting for the barrier.
 int dynamic_barrier_polling_increase_by_1(dynamic_barrier_polling_t *barrier);
 int dynamic_barrier_polling_decrease_by_1(dynamic_barrier_polling_t *barrier);
 

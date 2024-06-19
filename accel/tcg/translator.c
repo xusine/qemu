@@ -18,6 +18,8 @@
 #include "sysemu/quantum.h"
 #include "tcg/tcg.h"
 
+const bool DO_PROFILE = false;
+
 static void set_can_do_io(DisasContextBase *db, bool val)
 {
     if (db->saved_can_do_io != val) {
@@ -198,11 +200,11 @@ void translator_loop(CPUState *cpu, TranslationBlock *tb, int *max_insns,
             set_can_do_io(db, true);
         }
 
-        gen_helper_note_current_time(cpu_env);
+        if (DO_PROFILE) gen_helper_note_current_time(cpu_env);
 
         ops->translate_insn(db, cpu);
 
-        gen_helper_calculate_time_difference(cpu_env);
+        if (DO_PROFILE) gen_helper_calculate_time_difference(cpu_env);
 
         /*
          * We can't instrument after instructions that change control

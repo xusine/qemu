@@ -33,7 +33,7 @@ static void *report_time_peridically(void *arg) {
 }
 
 // create a timestamp of each thread. 
-static __thread uint64_t thread_start_quantum_timestamp = 0;
+// static __thread uint64_t thread_start_quantum_timestamp = 0;
 
 // // Initialize the dynamic barrier
 // int dynamic_barrier_init(dynamic_barrier_t *barrier, int initial_threshold) {
@@ -141,12 +141,12 @@ int dynamic_barrier_polling_destroy(dynamic_barrier_polling_t *barrier) {
     return 0;
 }
 
-int dynamic_barrier_polling_wait(dynamic_barrier_polling_t *barrier) {
+uint64_t dynamic_barrier_polling_wait(dynamic_barrier_polling_t *barrier) {
     uint64_t gen = atomic_load(&barrier->generation);
     uint64_t idx = atomic_fetch_add(&barrier->count, 1);
 
     // now, the time of the quantum is calculated.
-    uint64_t difference = get_current_timestamp_ns() - thread_start_quantum_timestamp;
+    // uint64_t difference = get_current_timestamp_ns() - thread_start_quantum_timestamp;
 
     
     if (idx == atomic_load(&barrier->threshold) - 1) {
@@ -164,18 +164,18 @@ int dynamic_barrier_polling_wait(dynamic_barrier_polling_t *barrier) {
         }
     }
 
-    if (thread_start_quantum_timestamp != 0) {
-        // get the CPU index.
-        uint64_t cpu_idx = current_cpu->cpu_index;
+    return gen + 1;
 
-        // add the data point to the histogram.
+    // if (thread_start_quantum_timestamp != 0) {
+    //     // get the CPU index.
+    //     uint64_t cpu_idx = current_cpu->cpu_index;
 
-        add_data_point(barrier->histogram[cpu_idx], difference);
-    } 
+    //     // add the data point to the histogram.
 
-    thread_start_quantum_timestamp = get_current_timestamp_ns();
+    //     add_data_point(barrier->histogram[cpu_idx], difference);
+    // } 
 
-    return 0;
+    // thread_start_quantum_timestamp = get_current_timestamp_ns();
 }
 
 int dynamic_barrier_polling_increase_by_1(dynamic_barrier_polling_t *barrier) {

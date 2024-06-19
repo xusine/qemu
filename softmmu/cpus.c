@@ -49,6 +49,12 @@
 #include "qemu/dynamic_barrier.h"
 #include "sysemu/quantum.h"
 
+// This function is used to get the current clock of the CPU.
+// It is helpful when we want to know the current target clock. 
+// We use this function to get the delay of the I/O events in terms of the target clock.
+// After we know the latency, we use it to update the quantum budget.
+int64_t cpu_get_clock_locked(void);
+
 #ifdef CONFIG_LINUX
 
 #include <sys/prctl.h>
@@ -416,9 +422,10 @@ void qemu_wait_io_event_common(CPUState *cpu)
     process_queued_cpu_work(cpu);
 }
 
-void qemu_wait_io_event(CPUState *cpu)
+uint64_t qemu_wait_io_event(CPUState *cpu)
 {
     bool slept = false;
+    uint64_t idle_latency = 0;
 
     while (cpu_thread_is_idle(cpu)) {
         if (!slept) {
@@ -429,12 +436,19 @@ void qemu_wait_io_event(CPUState *cpu)
             // Before going to sleep, you should let the quantum barrier know that I will not be involved.
             assert(dynamic_barrier_polling_decrease_by_1(&quantum_barrier) == 0);
         }
-        
+
+        uint64_t current_cpu_clock = cpu_get_clock_locked();
+
         qemu_cond_wait(cpu->halt_cond, &qemu_global_mutex);
+
+        uint64_t current_cpu_clock_after_io = cpu_get_clock_locked();
 
         if (is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
             // After sleep, you should let the quantum barrier know that I will be involved.
             dynamic_barrier_polling_increase_by_1(&quantum_barrier);
+
+            idle_latency += current_cpu_clock_after_io - current_cpu_clock;
+
         }
     }
     if (slept) {
@@ -448,6 +462,8 @@ void qemu_wait_io_event(CPUState *cpu)
     }
 #endif
     qemu_wait_io_event_common(cpu);
+
+    return idle_latency;
 }
 
 void cpus_kick_thread(CPUState *cpu)
