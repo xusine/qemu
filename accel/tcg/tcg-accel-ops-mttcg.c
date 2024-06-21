@@ -111,6 +111,10 @@ static void *mttcg_cpu_thread_fn(void *arg)
     /* process any pending work */
     cpu->exit_request = 1;
 
+    char histogram_name[100];
+    sprintf(histogram_name, "instruction_histogram_%lu.log", cpu_index);
+    FILE *instruction_histogram = fopen(histogram_name, "w");
+
     do {
         if (cpu_can_run(cpu)) {
             int r;
@@ -122,8 +126,13 @@ cpu_resume_from_quantum:
                 if (is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
                     while (cpu->env_ptr->quantum_budget <= 0) {
                         // We need to wait for all the vCPUs to finish their quantum.
-                        dynamic_barrier_polling_wait(&quantum_barrier); // I cannot directly go to sleep. I have to periodically check something.
+                        uint64_t current_gen = dynamic_barrier_polling_wait(&quantum_barrier); // I cannot directly go to sleep. I have to periodically check something.
                         cpu->env_ptr->quantum_budget += quantum_size;
+                        if ((current_gen * quantum_size) % 1000000000 == 0) {
+                            // print every billion instruction.
+                            print_histogram(cpu->env_ptr->instruction_histogram, instruction_histogram);
+                            fflush(instruction_histogram);
+                        }
                     }
                 }
                 // We need to reset the quantum budget of the current vCPU.
