@@ -23,6 +23,7 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/histogram.h"
 #include "qemu/osdep.h"
 #include "sysemu/tcg.h"
 #include "sysemu/replay.h"
@@ -126,13 +127,8 @@ cpu_resume_from_quantum:
                 if (is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
                     while (cpu->env_ptr->quantum_budget <= 0) {
                         // We need to wait for all the vCPUs to finish their quantum.
-                        uint64_t current_gen = dynamic_barrier_polling_wait(&quantum_barrier); // I cannot directly go to sleep. I have to periodically check something.
+                        dynamic_barrier_polling_wait(&quantum_barrier); 
                         cpu->env_ptr->quantum_budget += quantum_size;
-                        if ((current_gen * quantum_size) % 1000000000 == 0) {
-                            // print every billion instruction.
-                            print_histogram(cpu->env_ptr->instruction_histogram, instruction_histogram);
-                            fflush(instruction_histogram);
-                        }
                     }
                 }
                 // We need to reset the quantum budget of the current vCPU.
@@ -177,22 +173,28 @@ cpu_resume_from_quantum:
         
     } while (!cpu->unplug || cpu_can_run(cpu));
 
+    print_histogram(cpu->env_ptr->instruction_histogram, instruction_histogram);
+    fflush(instruction_histogram);
+    fclose(instruction_histogram);
+    
     tcg_cpus_destroy(cpu);
     qemu_mutex_unlock_iothread();
     rcu_remove_force_rcu_notifier(&force_rcu.notifier);
     rcu_unregister_thread();
 
     // resign the current thread from the barrier.
-    if (is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
+    if (is_vcpu_affiliated_with_quantum(cpu_index)) {
         dynamic_barrier_polling_decrease_by_1(&quantum_barrier);
+
+        puts("Thread unregistered from the barrier.");
 
         // also, print the histogram.
         // open a log file.
         char log_name[100];
-        snprintf(log_name, 100, "quantum_histogram_%d.log", cpu->cpu_index);
+        snprintf(log_name, 100, "quantum_histogram_%lu.log", cpu_index);
 
         FILE *fp = fopen(log_name, "w");
-        print_histogram(quantum_barrier.histogram[cpu->cpu_index], fp);
+        print_histogram(quantum_barrier.histogram[cpu_index], fp);
         fclose(fp);
     }
 
