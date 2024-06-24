@@ -98,7 +98,7 @@ static void *mttcg_cpu_thread_fn(void *arg)
     char timer_name[100];
     snprintf(timer_name, 100, "qlog/timer_frequency_%lu.csv", cpu_index);
     FILE *timer_fp = fopen(timer_name, "w");
-    fprintf(timer_fp, "phy,vurt,hyp,sec,hypvirt,total_icount,exclusive_icount\n");
+    fprintf(timer_fp, "phy,virt,hyp,sec,hypvirt,total_icount,exclusive_icount\n");
 
     uint64_t total_icount = 0;
     uint64_t exclusive_icount = 0;

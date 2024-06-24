@@ -2631,7 +2631,7 @@ static void gt_recalc_timer(ARMCPU *cpu, int timeridx)
         irqstate = (istatus && !(gt->ctl & 2));
         qemu_set_irq(cpu->gt_timer_outputs[timeridx], irqstate);
 
-        cpu->env.timer_interrupts_frequency[timeridx] += 1;
+        if (irqstate != 0) cpu->env.timer_interrupts_frequency[timeridx] += 1;
 
         if (istatus) {
             /*
