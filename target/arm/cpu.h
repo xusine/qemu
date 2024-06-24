@@ -806,6 +806,8 @@ typedef struct CPUArchState {
     uint64_t current_instruction_rdtsc;
 
     time_histogram_t *instruction_histogram;
+
+    uint64_t timer_interrupts_frequency[NUM_GTIMERS];
 } CPUARMState;
 
 static inline void set_feature(CPUARMState *env, int feature)

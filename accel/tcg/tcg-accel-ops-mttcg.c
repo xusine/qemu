@@ -94,6 +94,15 @@ static void *mttcg_cpu_thread_fn(void *arg)
 
     uint64_t cpu_index = cpu->cpu_index;
 
+    // open a csv file to record the timer frequency.
+    char timer_name[100];
+    snprintf(timer_name, 100, "timer_frequency_%lu.csv", cpu_index);
+    FILE *timer_fp = fopen(timer_name, "w");
+    fprintf(timer_fp, "phy,vurt,hyp,sec,hypvirt,total_icount,exclusive_icount\n");
+
+    uint64_t total_icount = 0;
+    uint64_t exclusive_icount = 0;
+
     cpu->thread_id = qemu_get_thread_id();
     cpu->can_do_io = 1;
 
@@ -123,7 +132,22 @@ cpu_resume_from_quantum:
                 if (is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
                     while (cpu->env_ptr->quantum_budget <= 0) {
                         // We need to wait for all the vCPUs to finish their quantum.
-                        dynamic_barrier_polling_wait(&quantum_barrier); // I cannot directly go to sleep. I have to periodically check something.
+                        uint64_t next_generation = dynamic_barrier_polling_wait(&quantum_barrier);
+                        if ((next_generation * quantum_size) % 1000000 == 0) {
+                                fprintf(
+                                    timer_fp, 
+                                    "%lu,%lu,%lu,%lu,%lu,%lu,%lu\n", 
+                                    cpu->env_ptr->timer_interrupts_frequency[0], 
+                                    cpu->env_ptr->timer_interrupts_frequency[1], 
+                                    cpu->env_ptr->timer_interrupts_frequency[2], 
+                                    cpu->env_ptr->timer_interrupts_frequency[3], 
+                                    cpu->env_ptr->timer_interrupts_frequency[4],
+                                    total_icount,
+                                    exclusive_icount
+                                );
+                                fflush(timer_fp);
+                        }
+                        total_icount += (int64_t)quantum_size - cpu->env_ptr->quantum_budget;
                         cpu->env_ptr->quantum_budget += quantum_size;
                     }
                     
@@ -152,7 +176,21 @@ cpu_resume_from_quantum:
                 // We need to sync immediately to get the quantum budget. 
                 if (is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
                     while (cpu->env_ptr->quantum_budget <= quantum_for_deduction) {
-                        dynamic_barrier_polling_wait(&quantum_barrier);
+                        uint64_t next_generation = dynamic_barrier_polling_wait(&quantum_barrier);
+                        if ((next_generation * quantum_size) % 1000000 == 0) {
+                                fprintf(
+                                    timer_fp, 
+                                    "%lu,%lu,%lu,%lu,%lu,%lu,%lu\n", 
+                                    cpu->env_ptr->timer_interrupts_frequency[0], 
+                                    cpu->env_ptr->timer_interrupts_frequency[1], 
+                                    cpu->env_ptr->timer_interrupts_frequency[2], 
+                                    cpu->env_ptr->timer_interrupts_frequency[3], 
+                                    cpu->env_ptr->timer_interrupts_frequency[4],
+                                    total_icount,
+                                    exclusive_icount + 1
+                                );
+                                fflush(timer_fp);
+                        }
                         cpu->env_ptr->quantum_budget += quantum_size;
                     }
                 }
@@ -161,6 +199,7 @@ cpu_resume_from_quantum:
                 cpu_exec_step_atomic(cpu);
                 // It is impossible to see the quantum is depleted here, because we leave the budget for the exclusive instruction.
                 assert(cpu->env_ptr->quantum_budget_depleted == false);
+                exclusive_icount += 1;
                 qemu_mutex_lock_iothread();
             default:
                 /* Ignore everything else? */

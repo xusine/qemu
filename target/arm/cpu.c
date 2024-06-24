@@ -554,6 +554,10 @@ static void arm_cpu_reset_hold(Object *obj)
         env->quantum_required = 0;
         env->quantum_budget_depleted = 0;
 
+        for (int i = 0; i < NUM_GTIMERS; ++i) {
+            env->timer_interrupts_frequency[i] = 0;
+        }
+
         env->instruction_histogram = create_histogram(50, 0, 1250);
     }
 }
