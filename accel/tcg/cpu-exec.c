@@ -1052,7 +1052,7 @@ cpu_exec_loop(CPUState *cpu, SyncClocks *sc)
             // Additional check for quantum.
             if (cpu->env_ptr->quantum_budget_depleted == 1) {
                 if (cpu->exception_index == -1) {
-                    cpu->exception_index = EXCP_INTERRUPT;
+                    cpu->exception_index = EXCP_QUANTUM;
                     // no need to continue. We have deplete the quantum.
                     break;
                 }

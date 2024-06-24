@@ -118,7 +118,7 @@ static void *mttcg_cpu_thread_fn(void *arg)
 cpu_resume_from_quantum:
             r = tcg_cpus_exec(cpu);
             // check the quantum budget and sync before doing I/O operation.
-            if (r == EXCP_INTERRUPT && cpu->env_ptr->quantum_budget_depleted) {
+            if (cpu->env_ptr->quantum_budget_depleted) {
                 if (is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
                     while (cpu->env_ptr->quantum_budget <= 0) {
                         // We need to wait for all the vCPUs to finish their quantum.
@@ -128,7 +128,9 @@ cpu_resume_from_quantum:
                 }
                 // We need to reset the quantum budget of the current vCPU.
                 cpu->env_ptr->quantum_budget_depleted = false;
-                goto cpu_resume_from_quantum;
+                if (r == EXCP_QUANTUM) {
+                    goto cpu_resume_from_quantum;
+                }
             }
             qemu_mutex_lock_iothread();
             switch (r) {
