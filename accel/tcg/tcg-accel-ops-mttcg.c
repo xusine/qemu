@@ -146,7 +146,21 @@ cpu_resume_from_quantum:
                 break;
             case EXCP_ATOMIC:
                 qemu_mutex_unlock_iothread();
+                // Well, it is possible that this atomic step may deplete the quantum budget.
+                // What we have to do now is to give enough quantum budget to this CPU, and remove it afterwards. 
+                uint64_t quantum_for_deduction = cpu->env_ptr->quantum_required;
+                // We need to sync immediately to get the quantum budget. 
+                if (is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
+                    while (cpu->env_ptr->quantum_budget <= quantum_for_deduction) {
+                        dynamic_barrier_polling_wait(&quantum_barrier);
+                        cpu->env_ptr->quantum_budget += quantum_size;
+                    }
+                }
+                assert(cpu->env_ptr->quantum_budget_depleted == false);
+                // Now it is safe to execute the next instruction. It will not trigger quantum depleting and rollback.
                 cpu_exec_step_atomic(cpu);
+                // It is impossible to see the quantum is depleted here, because we leave the budget for the exclusive instruction.
+                assert(cpu->env_ptr->quantum_budget_depleted == false);
                 qemu_mutex_lock_iothread();
             default:
                 /* Ignore everything else? */
