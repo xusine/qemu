@@ -149,9 +149,6 @@ void translator_loop(CPUState *cpu, TranslationBlock *tb, int *max_insns,
     db->is_jmp = DISAS_NEXT;
     db->num_insns = 0;
     db->max_insns = *max_insns;
-    if (quantum_enabled()) {
-        db->max_insns = *max_insns > quantum_size ? quantum_size : *max_insns;
-    }
     db->singlestep_enabled = cflags & CF_SINGLE_STEP;
     db->saved_can_do_io = -1;
     db->host_addr[0] = host_pc;
