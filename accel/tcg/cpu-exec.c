@@ -22,6 +22,7 @@
 #include "qapi/error.h"
 #include "qapi/type-helpers.h"
 #include "hw/core/tcg-cpu-ops.h"
+#include "sysemu/quantum.h"
 #include "trace.h"
 #include "disas/disas.h"
 #include "exec/exec-all.h"
@@ -1051,11 +1052,17 @@ cpu_exec_loop(CPUState *cpu, SyncClocks *sc)
 
             // Additional check for quantum.
             if (cpu->env_ptr->quantum_budget_depleted == 1) {
-                if (cpu->exception_index == -1) {
-                    cpu->exception_index = EXCP_QUANTUM;
-                    // no need to continue. We have deplete the quantum.
-                    break;
+                if (is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
+                    if (cpu->exception_index == -1) {
+                        cpu->exception_index = EXCP_QUANTUM;
+                        // no need to continue. We have deplete the quantum.
+                        break;
+                    }
+                } else {
+                    // there is simply no impact.
+                    cpu->env_ptr->quantum_budget_depleted = 0;
                 }
+                
             }
         }
     }
