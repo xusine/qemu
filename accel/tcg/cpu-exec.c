@@ -562,6 +562,10 @@ static void cpu_exec_longjmp_cleanup(CPUState *cpu)
         qemu_mutex_unlock_iothread();
     }
     assert_no_pages_locked();
+
+    // Also clean the quantum requirement, considering that the instruction is not directly finished. 
+    // I know this is not a best practice, but we have to do so to avoid livelock...
+    cpu->env_ptr->quantum_required = 0;
 }
 
 void cpu_exec_step_atomic(CPUState *cpu)
