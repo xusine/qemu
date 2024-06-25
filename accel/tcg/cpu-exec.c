@@ -909,7 +909,9 @@ static inline bool cpu_handle_interrupt(CPUState *cpu,
 
     // In the end, we check the quantum depletion. 
     if (cpu->env_ptr->quantum_budget_depleted && is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
-        cpu->exception_index = EXCP_QUANTUM;
+        if (cpu->exception_index == -1) {
+            cpu->exception_index = EXCP_QUANTUM;
+        }
         return true;
     }
 
