@@ -907,6 +907,12 @@ static inline bool cpu_handle_interrupt(CPUState *cpu,
         return true;
     }
 
+    // In the end, we check the quantum depletion. 
+    if (cpu->env_ptr->quantum_budget_depleted && is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
+        cpu->exception_index = EXCP_QUANTUM;
+        return true;
+    }
+
     return false;
 }
 
@@ -1050,20 +1056,6 @@ cpu_exec_loop(CPUState *cpu, SyncClocks *sc)
                if the guest is in advance */
             align_clocks(sc, cpu);
 
-            // Additional check for quantum.
-            if (cpu->env_ptr->quantum_budget_depleted == 1) {
-                if (is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
-                    if (cpu->exception_index == -1) {
-                        cpu->exception_index = EXCP_QUANTUM;
-                        // no need to continue. We have deplete the quantum.
-                        break;
-                    }
-                } else {
-                    // there is simply no impact.
-                    cpu->env_ptr->quantum_budget_depleted = 0;
-                }
-                
-            }
         }
     }
     return ret;
