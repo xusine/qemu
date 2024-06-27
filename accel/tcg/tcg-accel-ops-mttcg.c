@@ -208,7 +208,7 @@ cpu_resume_from_quantum:
         }
 
         qatomic_set_mb(&cpu->exit_request, 0);
-        uint64_t idle_latency = qemu_wait_io_event(cpu);
+        qemu_wait_io_event(cpu);
 
         if (is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
             // We need to update the quantum budget of the current vCPU.
@@ -216,8 +216,28 @@ cpu_resume_from_quantum:
             // This latency may also go across multiple quanta, but this part can be cancelled, because we assume they wait for the quantum barrier.
             // Now, the problem is that remaining. This part should be deducted from the quantum budget.
 
-            uint64_t io_latency_after_deducing_quantum = idle_latency % quantum_size;
-            cpu->env_ptr->quantum_required += io_latency_after_deducing_quantum;
+            // We can look at what other CPUs are doing right now. 
+            CPUState *iter_cpu;
+            uint64_t budget_left = 0;
+            uint64_t sampled_cpus = 0;
+
+            CPU_FOREACH(iter_cpu) {
+                if (!cpu_thread_is_idle(iter_cpu) && iter_cpu != cpu && is_vcpu_affiliated_with_quantum(iter_cpu->cpu_index)) {
+                    budget_left += cpu->env_ptr->quantum_budget;
+                    sampled_cpus += 1;
+                }
+            }
+
+            if (sampled_cpus > 0) {
+                budget_left /= sampled_cpus;
+                cpu->env_ptr->quantum_budget = budget_left;
+                cpu->env_ptr->quantum_required = 0;
+            } else {
+                // What if all CPUs are going to sleep?
+                // It is safe to directly go to sleep. 
+                cpu->env_ptr->quantum_budget = 0;
+                cpu->env_ptr->quantum_required = 0;
+            }
         }
         
     } while (!cpu->unplug || cpu_can_run(cpu));
