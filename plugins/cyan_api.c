@@ -35,6 +35,7 @@ qemu_plugin_cpu_clock_callback_t cyan_cpu_clock_cb = NULL;
 qemu_plugin_vcpu_branch_resolved_cb_t cyan_br_cb = NULL;
 qemu_plugin_savevm_cb_t cyan_savevm_cb = NULL; 
 qemu_plugin_snapshot_cpu_clock_update_cb cyan_snapshot_cpu_clock_udpate_cb = NULL;
+qemu_plugin_quantum_deplete_cb_t quantum_deplete_cb = NULL;
 
 
 void qemu_plugin_set_running_flag(bool is_running) {
@@ -199,6 +200,14 @@ bool qemu_plugin_register_savevm_cb(qemu_plugin_savevm_cb_t cb) {
     return false;
   }
   cyan_savevm_cb = cb;
+  return true;
+}
+
+bool qemu_plugin_register_quantum_deplete_cb(qemu_plugin_quantum_deplete_cb_t cb) {
+  if (quantum_deplete_cb) {
+    return false;
+  }
+  quantum_deplete_cb = cb;
   return true;
 }
 

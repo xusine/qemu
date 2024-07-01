@@ -145,6 +145,8 @@ void cpu_exec_realizefn(CPUState *cpu, Error **errp)
         tcg_exec_realizefn(cpu, errp);
     }
 
+    cpu->unknown_time = false;
+
     /* Wait until cpu initialization complete before exposing cpu. */
     cpu_list_add(cpu);
 

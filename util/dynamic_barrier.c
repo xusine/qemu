@@ -1,12 +1,13 @@
 #include "qemu/dynamic_barrier.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <time.h>
 #include <unistd.h>
 
 #include "qemu/osdep.h"
 #include "sysemu/quantum.h"
+#include "qemu/plugin-cyan.h"
 
-#include "hw/core/cpu.h"
 
 
 static uint64_t get_current_timestamp_ns(void) {
@@ -117,6 +118,9 @@ static void *report_time_peridically(void *arg) {
 
 
 int dynamic_barrier_polling_init(dynamic_barrier_polling_t *barrier, int initial_threshold) {
+    barrier->lock.next_ticket = 0;
+    barrier->lock.now_serving = 0;
+
     barrier->threshold = initial_threshold;
     barrier->count = 0;
     barrier->generation = 0;
@@ -141,67 +145,90 @@ int dynamic_barrier_polling_destroy(dynamic_barrier_polling_t *barrier) {
     return 0;
 }
 
-uint64_t dynamic_barrier_polling_wait(dynamic_barrier_polling_t *barrier) {
-    uint64_t gen = atomic_load(&barrier->generation);
-    uint64_t idx = atomic_fetch_add(&barrier->count, 1);
+static void dynamic_barrier_polling_acquire_lock(dynamic_barrier_polling_t *barrier) {
+    uint64_t my_ticket = atomic_fetch_add(&barrier->lock.next_ticket, 1);
+    while (atomic_load(&barrier->lock.now_serving) != my_ticket) {
+        // do nothing
+    }
+}
 
-    // now, the time of the quantum is calculated.
-    // uint64_t difference = get_current_timestamp_ns() - thread_start_quantum_timestamp;
+static void dynamic_barrier_polling_release_lock(dynamic_barrier_polling_t *barrier) {
+    atomic_fetch_add(&barrier->lock.now_serving, 1);
+}
 
+uint32_t dynamic_barrier_polling_wait(dynamic_barrier_polling_t *barrier, uint32_t private_generation) {
+    dynamic_barrier_polling_acquire_lock(barrier);
+
+    uint64_t current_gen = atomic_load(&barrier->generation);
+
+    assert(private_generation == current_gen);
+
+    uint64_t waiting_count = barrier->count; 
     
-    if (idx == atomic_load(&barrier->threshold) - 1) {
-        // This is the last thread entering the barrier.
-        // barrier->total_diff += get_current_timestamp_ns() - barrier->last_timestamp;
+    if (waiting_count == barrier->threshold - 1) {
+        if ((current_gen + 1) * quantum_size >= 1000000000) {
+            if (quantum_deplete_cb != NULL) {
+                printf("Quantum is depleted\n");
+                quantum_deplete_cb(); 
+                exit(0);
+            }
+        }
 
-        // reset the waiting count.
-        atomic_store(&barrier->count, 0);
+        barrier->count = 0;
 
-        // increase the generation.
+        // increase the generation and notify others.
         atomic_fetch_add(&barrier->generation, 1);
+        dynamic_barrier_polling_release_lock(barrier); // we can release the generation here. 
     } else {
-        while (atomic_load(&barrier->generation) == gen) {
+        barrier->count += 1;
+        dynamic_barrier_polling_release_lock(barrier);
+
+        // You just need to wait.
+        while (atomic_load(&barrier->generation) == private_generation) {
             // do nothing, because the current generation is not changed.
         }
     }
 
-    return gen + 1;
-
-    // if (thread_start_quantum_timestamp != 0) {
-    //     // get the CPU index.
-    //     uint64_t cpu_idx = current_cpu->cpu_index;
-
-    //     // add the data point to the histogram.
-
-    //     add_data_point(barrier->histogram[cpu_idx], difference);
-    // } 
-
-    // thread_start_quantum_timestamp = get_current_timestamp_ns();
+    return current_gen + 1;
 }
 
-int dynamic_barrier_polling_increase_by_1(dynamic_barrier_polling_t *barrier) {
-    atomic_fetch_add(&barrier->threshold, 1);
-    return 0;
+uint32_t dynamic_barrier_polling_increase_by_1(dynamic_barrier_polling_t *barrier) {
+    uint32_t current_generation;
+    dynamic_barrier_polling_acquire_lock(barrier);
+    current_generation = atomic_load(&barrier->generation);
+    barrier->threshold += 1;
+    dynamic_barrier_polling_release_lock(barrier);
+
+    return current_generation;
 }
 
 int dynamic_barrier_polling_decrease_by_1(dynamic_barrier_polling_t *barrier) {
-    if (atomic_load(&barrier->threshold) <= 0) {
-        return -1;
+    dynamic_barrier_polling_acquire_lock(barrier);
+    if (barrier->threshold <= 0) {
+        dynamic_barrier_polling_release_lock(barrier);
+        assert(false);
     }
-    if (atomic_fetch_sub(&barrier->threshold, 1) == atomic_load(&barrier->count) + 1) {
-        // This thread actually makes the threshold smaller than the count.
-        // In case it triggers the threshold, it should release all the waiting threads.
 
-        if (!quantum_enabled()) {
-            assert(atomic_load(&barrier->count) == 0);
+    barrier->threshold -= 1;
+    uint64_t waiting_count = barrier->count;
+    uint64_t current_gen = atomic_load(&barrier->generation);
+
+    if (waiting_count == barrier->threshold) {
+        if ((current_gen + 1) * quantum_size >= 1000000000) {
+            if (quantum_deplete_cb != NULL) {
+                printf("Quantum is depleted\n");
+                quantum_deplete_cb(); 
+                exit(0);
+            }
         }
 
-        // reset the waiting count.
-        atomic_store(&barrier->count, 0);
+        barrier->count = 0;
 
-        // increase the generation.
+        // increase the generation and notify others.
         atomic_fetch_add(&barrier->generation, 1);
-
     }
+
+    dynamic_barrier_polling_release_lock(barrier);
     return 0;
 }
 

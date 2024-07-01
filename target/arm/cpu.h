@@ -799,7 +799,17 @@ typedef struct CPUArchState {
     bool tagged_addr_enable;
 #endif
 
-    int64_t quantum_budget;
+    // quantum related variables
+    union {
+        struct {
+            uint32_t quantum_generation; // which generation are you in now?
+            int32_t quantum_budget;
+        } separated;
+        uint64_t combined;
+    } quantum_budget_and_generation;
+
+    uint64_t __padding[6];
+
     uint64_t quantum_required; // Amount of quantum required for the current tb. This is dynamically update during the execution.
     int quantum_budget_depleted;
 

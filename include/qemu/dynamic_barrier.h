@@ -29,12 +29,16 @@ typedef struct {
 
 
 typedef struct {
-    atomic_uint_fast64_t threshold;
-    uint64_t __padding1__[7];
-    atomic_uint_fast64_t count;
+    struct {
+        atomic_uint_fast64_t next_ticket;
+        atomic_uint_fast64_t now_serving;
+    } lock;
+    uint64_t __padding1__[6];
+    uint64_t threshold;
     uint64_t __padding2__[7];
-    atomic_uint_fast64_t generation;
+    uint64_t count;
     uint64_t __padding3__[7];
+    atomic_uint_fast32_t generation;
     uint64_t last_timestamp;
     uint64_t total_diff;
     time_histogram_t *histogram[128]; // each core has its own histogram.
@@ -42,8 +46,8 @@ typedef struct {
 
 int dynamic_barrier_polling_init(dynamic_barrier_polling_t *barrier, int initial_threshold);
 int dynamic_barrier_polling_destroy(dynamic_barrier_polling_t *barrier);
-uint64_t dynamic_barrier_polling_wait(dynamic_barrier_polling_t *barrier); // return the current quantum generation after waiting for the barrier.
-int dynamic_barrier_polling_increase_by_1(dynamic_barrier_polling_t *barrier);
+uint32_t dynamic_barrier_polling_wait(dynamic_barrier_polling_t *barrier, uint32_t private_generation); // return the current quantum generation after waiting for the barrier.
+uint32_t dynamic_barrier_polling_increase_by_1(dynamic_barrier_polling_t *barrier); // return the current generation while this thread is added. 
 int dynamic_barrier_polling_decrease_by_1(dynamic_barrier_polling_t *barrier);
 
 

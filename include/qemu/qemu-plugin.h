@@ -867,4 +867,9 @@ CYAN_API typedef void (*qemu_plugin_savevm_cb_t)(const char *);
 CYAN_API bool qemu_plugin_register_savevm_cb(qemu_plugin_savevm_cb_t cb);
 
 
+// This is a temporal solution to call the Rust code when a specific number of quantums is executed. 
+CYAN_API typedef void (*qemu_plugin_quantum_deplete_cb_t)(void);
+
+CYAN_API bool qemu_plugin_register_quantum_deplete_cb(qemu_plugin_quantum_deplete_cb_t cb);
+
 #endif /* QEMU_QEMU_PLUGIN_H */

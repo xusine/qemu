@@ -10,7 +10,7 @@
 
 void HELPER(deduce_quantum)(CPUArchState *env) {
     assert(quantum_enabled());
-    env->quantum_budget -= env->quantum_required;
+    env->quantum_budget_and_generation.separated.quantum_budget -= env->quantum_required;
     env->quantum_required = 0;
 }
 
@@ -21,9 +21,9 @@ uint32_t HELPER(check_and_deduce_quantum)(CPUArchState *env) {
         return false;
     }
 
-    env->quantum_budget -= env->quantum_required;
+    env->quantum_budget_and_generation.separated.quantum_budget -= env->quantum_required;
     env->quantum_required = 0;
-    if (env->quantum_budget <= 0) {
+    if (env->quantum_budget_and_generation.separated.quantum_budget <= 0) {
         env->quantum_budget_depleted = 1;
         return true;
     }
@@ -32,7 +32,7 @@ uint32_t HELPER(check_and_deduce_quantum)(CPUArchState *env) {
 
 void HELPER(deplete_quantum_budget)(CPUArchState *env) {
     assert(quantum_enabled());
-    env->quantum_budget = 0;
+    env->quantum_budget_and_generation.separated.quantum_budget = 0;
     env->quantum_budget_depleted = 1;
 }
 

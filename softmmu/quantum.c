@@ -26,6 +26,7 @@ void quantum_configure(QemuOpts *opts, Error **errp) {
 
     // make it as a global value.
     quantum_size = quantum_size_tmp;
+    assert(quantum_size < 0x7fffffff);
 }
 
 inline bool is_vcpu_affiliated_with_quantum(uint64_t cpu_idx) {

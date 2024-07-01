@@ -422,7 +422,7 @@ void qemu_wait_io_event_common(CPUState *cpu)
     process_queued_cpu_work(cpu);
 }
 
-uint64_t qemu_wait_io_event(CPUState *cpu)
+uint64_t qemu_wait_io_event(CPUState *cpu, uint32_t *current_quantum_generation)
 {
     bool slept = false;
     uint64_t idle_latency = 0;
@@ -434,6 +434,7 @@ uint64_t qemu_wait_io_event(CPUState *cpu)
         }
         if (is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
             // Before going to sleep, you should let the quantum barrier know that I will not be involved.
+            cpu->unknown_time = 1;
             assert(dynamic_barrier_polling_decrease_by_1(&quantum_barrier) == 0);
         }
 
@@ -445,11 +446,13 @@ uint64_t qemu_wait_io_event(CPUState *cpu)
 
         if (is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
             // After sleep, you should let the quantum barrier know that I will be involved.
-            dynamic_barrier_polling_increase_by_1(&quantum_barrier);
+            *current_quantum_generation = dynamic_barrier_polling_increase_by_1(&quantum_barrier);
 
             idle_latency += current_cpu_clock_after_io - current_cpu_clock;
 
         }
+
+        idle_latency = 1;
     }
     if (slept) {
         qemu_plugin_vcpu_resume_cb(cpu);

@@ -92,19 +92,20 @@ static void *mttcg_cpu_thread_fn(void *arg)
         printf("Quantum Count: %lu \n", quantum_size);
     }
 
-    uint64_t cpu_index = cpu->cpu_index;
+    // uint64_t cpu_index = cpu->cpu_index;
 
     // open a csv file to record the timer frequency.
-    char timer_name[100];
-    snprintf(timer_name, 100, "qlog/timer_frequency_%lu.csv", cpu_index);
-    FILE *timer_fp = fopen(timer_name, "w");
-    fprintf(timer_fp, "phy,virt,hyp,sec,hypvirt,total_icount,exclusive_icount\n");
+    // char timer_name[100];
+    // snprintf(timer_name, 100, "qlog/timer_frequency_%lu.csv", cpu_index);
+    // FILE *timer_fp = fopen(timer_name, "w");
+    // fprintf(timer_fp, "phy,virt,hyp,sec,hypvirt,total_icount,exclusive_icount\n");
 
-    uint64_t total_icount = 0;
-    uint64_t exclusive_icount = 0;
+    // uint64_t total_icount = 0;
+    // uint64_t exclusive_icount = 0;
 
     cpu->thread_id = qemu_get_thread_id();
     cpu->can_do_io = 1;
+    cpu->unknown_time = 0;
 
     current_cpu = cpu;
     cpu_thread_signal_created(cpu);
@@ -112,10 +113,10 @@ static void *mttcg_cpu_thread_fn(void *arg)
 
     // Now we want to fix the core affinity of the current thread for better experiments.
     // The thread is bind to the core 0.
-    // cpu_set_t cpuset;
-    // CPU_ZERO(&cpuset);
-    // CPU_SET(cpu->cpu_index, &cpuset);
-    // pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(cpu->cpu_index, &cpuset);
+    pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
 
     /* process any pending work */
     cpu->exit_request = 1;
@@ -130,31 +131,37 @@ cpu_resume_from_quantum:
             if (cpu->env_ptr->quantum_budget_depleted) {
                 cpu->env_ptr->quantum_budget_depleted = false;
                 if (is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
-                    while (cpu->env_ptr->quantum_budget <= 0) {
+                    while (cpu->env_ptr->quantum_budget_and_generation.separated.quantum_budget <= 0) {
                         // We need to wait for all the vCPUs to finish their quantum.
-                        uint64_t next_generation = dynamic_barrier_polling_wait(&quantum_barrier);
-                        if ((next_generation * quantum_size) % 1000000 == 0) {
-                                fprintf(
-                                    timer_fp, 
-                                    "%lu,%lu,%lu,%lu,%lu,%lu,%lu\n", 
-                                    cpu->env_ptr->timer_interrupts_frequency[0], 
-                                    cpu->env_ptr->timer_interrupts_frequency[1], 
-                                    cpu->env_ptr->timer_interrupts_frequency[2], 
-                                    cpu->env_ptr->timer_interrupts_frequency[3], 
-                                    cpu->env_ptr->timer_interrupts_frequency[4],
-                                    total_icount,
-                                    exclusive_icount
-                                );
-                                fflush(timer_fp);
-                        }
-                        total_icount += (int64_t)quantum_size - cpu->env_ptr->quantum_budget;
-                        cpu->env_ptr->quantum_budget += quantum_size;
+                        uint64_t new_generation = dynamic_barrier_polling_wait(&quantum_barrier, cpu->env_ptr->quantum_budget_and_generation.separated.quantum_generation);
+                        // uint64_t next_generation = dynamic_barrier_polling_wait(&quantum_barrier);
+                        // if ((next_generation * quantum_size) % 1000000 == 0) {
+                        //         fprintf(
+                        //             timer_fp, 
+                        //             "%lu,%lu,%lu,%lu,%lu,%lu,%lu\n", 
+                        //             cpu->env_ptr->timer_interrupts_frequency[0], 
+                        //             cpu->env_ptr->timer_interrupts_frequency[1], 
+                        //             cpu->env_ptr->timer_interrupts_frequency[2], 
+                        //             cpu->env_ptr->timer_interrupts_frequency[3], 
+                        //             cpu->env_ptr->timer_interrupts_frequency[4],
+                        //             total_icount,
+                        //             exclusive_icount
+                        //         );
+                        //         fflush(timer_fp);
+                        // }
+                        // total_icount += (int64_t)quantum_size - cpu->env_ptr->quantum_budget;
+
+                        uint64_t new_budget_and_generation = cpu->env_ptr->quantum_budget_and_generation.separated.quantum_budget + quantum_size;
+                        new_budget_and_generation = new_budget_and_generation << 32 | new_generation;
+                        cpu->env_ptr->quantum_budget_and_generation.combined = new_budget_and_generation;
                     }
                     
                     // We need to reset the quantum budget of the current vCPU.
                     if (r == EXCP_QUANTUM) {
                         goto cpu_resume_from_quantum;
                     }
+                } else {
+                    assert(false);
                 }
             }
             qemu_mutex_lock_iothread();
@@ -175,23 +182,26 @@ cpu_resume_from_quantum:
                 uint64_t quantum_for_deduction = cpu->env_ptr->quantum_required;
                 // We need to sync immediately to get the quantum budget. 
                 if (is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
-                    while (cpu->env_ptr->quantum_budget <= quantum_for_deduction) {
-                        uint64_t next_generation = dynamic_barrier_polling_wait(&quantum_barrier);
-                        if ((next_generation * quantum_size) % 1000000 == 0) {
-                                fprintf(
-                                    timer_fp, 
-                                    "%lu,%lu,%lu,%lu,%lu,%lu,%lu\n", 
-                                    cpu->env_ptr->timer_interrupts_frequency[0], 
-                                    cpu->env_ptr->timer_interrupts_frequency[1], 
-                                    cpu->env_ptr->timer_interrupts_frequency[2], 
-                                    cpu->env_ptr->timer_interrupts_frequency[3], 
-                                    cpu->env_ptr->timer_interrupts_frequency[4],
-                                    total_icount,
-                                    exclusive_icount + 1
-                                );
-                                fflush(timer_fp);
-                        }
-                        cpu->env_ptr->quantum_budget += quantum_size;
+                    while (cpu->env_ptr->quantum_budget_and_generation.separated.quantum_budget <= quantum_for_deduction) {
+                        uint64_t new_generation = dynamic_barrier_polling_wait(&quantum_barrier, cpu->env_ptr->quantum_budget_and_generation.separated.quantum_generation);
+                        // uint64_t next_generation = dynamic_barrier_polling_wait(&quantum_barrier);
+                        // if ((next_generation * quantum_size) % 1000000 == 0) {
+                        //         fprintf(
+                        //             timer_fp, 
+                        //             "%lu,%lu,%lu,%lu,%lu,%lu,%lu\n", 
+                        //             cpu->env_ptr->timer_interrupts_frequency[0], 
+                        //             cpu->env_ptr->timer_interrupts_frequency[1], 
+                        //             cpu->env_ptr->timer_interrupts_frequency[2], 
+                        //             cpu->env_ptr->timer_interrupts_frequency[3], 
+                        //             cpu->env_ptr->timer_interrupts_frequency[4],
+                        //             total_icount,
+                        //             exclusive_icount + 1
+                        //         );
+                        //         fflush(timer_fp);
+                        // }
+                        uint64_t new_budget_and_generation = cpu->env_ptr->quantum_budget_and_generation.separated.quantum_budget + quantum_size;
+                        new_budget_and_generation = new_budget_and_generation << 32 | new_generation;
+                        cpu->env_ptr->quantum_budget_and_generation.combined = new_budget_and_generation;
                     }
                 }
                 assert(cpu->env_ptr->quantum_budget_depleted == false);
@@ -199,7 +209,7 @@ cpu_resume_from_quantum:
                 cpu_exec_step_atomic(cpu);
                 // It is impossible to see the quantum is depleted here, because we leave the budget for the exclusive instruction.
                 assert(cpu->env_ptr->quantum_budget_depleted == false);
-                exclusive_icount += 1;
+                // exclusive_icount += 1;
                 qemu_mutex_lock_iothread();
             default:
                 /* Ignore everything else? */
@@ -208,36 +218,48 @@ cpu_resume_from_quantum:
         }
 
         qatomic_set_mb(&cpu->exit_request, 0);
-        qemu_wait_io_event(cpu);
+        uint32_t current_quantum_generation = 0;
+        uint64_t has_slept = qemu_wait_io_event(cpu, &current_quantum_generation);
 
-        if (is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
+        if (has_slept && is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
             // We need to update the quantum budget of the current vCPU.
             // We assume that the idle thread update the quantum in the same way as other threads. 
             // This latency may also go across multiple quanta, but this part can be cancelled, because we assume they wait for the quantum barrier.
             // Now, the problem is that remaining. This part should be deducted from the quantum budget.
 
             // We can look at what other CPUs are doing right now. 
+            assert(cpu->unknown_time == 1);
+
             CPUState *iter_cpu;
-            uint64_t budget_left = 0;
-            uint64_t sampled_cpus = 0;
+            uint64_t current_generation_count = 0;
+            uint64_t current_generation_budget = 0;
 
             CPU_FOREACH(iter_cpu) {
-                if (!cpu_thread_is_idle(iter_cpu) && iter_cpu != cpu && is_vcpu_affiliated_with_quantum(iter_cpu->cpu_index)) {
-                    budget_left += cpu->env_ptr->quantum_budget;
-                    sampled_cpus += 1;
+                if (iter_cpu->unknown_time == 0 && iter_cpu != cpu && is_vcpu_affiliated_with_quantum(iter_cpu->cpu_index)) {
+                    uint64_t other_cpu_budget_and_generation = iter_cpu->env_ptr->quantum_budget_and_generation.combined;
+                    int32_t other_cpu_budget = other_cpu_budget_and_generation >> 32;
+                    uint32_t other_cpu_generation = other_cpu_budget_and_generation & 0xFFFFFFFF;
+                    if (other_cpu_generation == current_quantum_generation) {
+                        if (other_cpu_budget < 0) other_cpu_budget = 0;
+                        current_generation_budget += other_cpu_budget;
+                        current_generation_count += 1;
+                    } else {
+                        assert(other_cpu_budget <= 0);
+                    }
                 }
             }
 
-            if (sampled_cpus > 0) {
-                budget_left /= sampled_cpus;
-                cpu->env_ptr->quantum_budget = budget_left;
-                cpu->env_ptr->quantum_required = 0;
+            if (current_generation_count) {
+                int32_t budget = current_generation_budget / current_generation_count;
+                uint64_t new_budget_and_generation = (((uint64_t)budget) << 32) | current_quantum_generation;
+                cpu->env_ptr->quantum_budget_and_generation.combined = new_budget_and_generation;
             } else {
-                // What if all CPUs are going to sleep?
-                // It is safe to directly go to sleep. 
-                cpu->env_ptr->quantum_budget = 0;
-                cpu->env_ptr->quantum_required = 0;
+                // this must be the beginning of the quantum. 
+                uint64_t new_budget_and_generation = (((uint64_t)quantum_size) << 32) | current_quantum_generation;
+                cpu->env_ptr->quantum_budget_and_generation.combined = new_budget_and_generation;
             }
+
+            cpu->unknown_time = 0;
         }
         
     } while (!cpu->unplug || cpu_can_run(cpu));

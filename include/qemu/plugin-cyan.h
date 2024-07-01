@@ -26,4 +26,7 @@ extern qemu_plugin_savevm_cb_t cyan_savevm_cb;
 // The callback for the moment when the snapshot CPU clock is updated.
 extern qemu_plugin_snapshot_cpu_clock_update_cb cyan_snapshot_cpu_clock_udpate_cb;
 
+// The callback for the quantum depetion.
+extern qemu_plugin_quantum_deplete_cb_t quantum_deplete_cb;
+
 #endif
