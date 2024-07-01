@@ -810,6 +810,8 @@ typedef struct CPUArchState {
 
     uint64_t __padding[6];
 
+    uint32_t quantum_generation_upper32;
+
     uint64_t quantum_required; // Amount of quantum required for the current tb. This is dynamically update during the execution.
     int quantum_budget_depleted;
 

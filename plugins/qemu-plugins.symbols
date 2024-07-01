@@ -59,4 +59,6 @@
   qemu_plugin_register_vcpu_branch_resolved_cb;
   qemu_plugin_read_pc_vpn;
   qemu_plugin_register_savevm_cb;
+  qemu_plugin_register_quantum_deplete_cb;
+  qemu_plugin_read_local_virtual_time_base;
 };

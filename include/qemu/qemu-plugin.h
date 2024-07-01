@@ -872,4 +872,13 @@ CYAN_API typedef void (*qemu_plugin_quantum_deplete_cb_t)(void);
 
 CYAN_API bool qemu_plugin_register_quantum_deplete_cb(qemu_plugin_quantum_deplete_cb_t cb);
 
+/**
+ * qemu_plugin_read_vts_base - return the base virtual time calculated from the quantum budget and quantum generation. 
+ * 
+ * The return value does not contain the current translation block. 
+ * You need to add the bias by yourself to get the accurate virtual timestamp.
+ * 
+ */
+CYAN_API uint64_t qemu_plugin_read_local_virtual_time_base(void);
+
 #endif /* QEMU_QEMU_PLUGIN_H */

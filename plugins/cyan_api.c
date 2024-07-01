@@ -29,6 +29,7 @@
 #include "softmmu/timers-state.h"
 #include "exec/cpu-common.h"
 #include "qemu/plugin-cyan.h"
+#include "sysemu/quantum.h"
 
 // All cyan callback functions
 qemu_plugin_cpu_clock_callback_t cyan_cpu_clock_cb = NULL;
@@ -209,6 +210,31 @@ bool qemu_plugin_register_quantum_deplete_cb(qemu_plugin_quantum_deplete_cb_t cb
   }
   quantum_deplete_cb = cb;
   return true;
+}
+
+uint64_t qemu_plugin_read_local_virtual_time_base(void) {
+  g_assert_cmpstr(TARGET_NAME, ==, "aarch64");
+  CPUState *cpu = current_cpu;
+  g_assert(cpu != NULL);
+
+  uint64_t quantum_generation = (uint64_t)cpu->env_ptr->quantum_generation_upper32 << 32;
+  int32_t quantum_budget = cpu->env_ptr->quantum_budget_and_generation.separated.quantum_budget;
+  quantum_generation |= cpu->env_ptr->quantum_budget_and_generation.separated.quantum_generation;
+
+  uint64_t vtime = quantum_generation * quantum_size;
+  
+  // now, we consider the quantum budget.
+  vtime += quantum_size;
+
+  // remove the existing quantum budget.
+  if (quantum_budget < 0) {
+    quantum_budget = -quantum_budget;
+    vtime += (uint64_t) quantum_budget;
+  } else {
+    vtime -= (uint64_t) quantum_budget;
+  }
+
+  return vtime;
 }
 
 #endif

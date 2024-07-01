@@ -134,22 +134,15 @@ cpu_resume_from_quantum:
                     while (cpu->env_ptr->quantum_budget_and_generation.separated.quantum_budget <= 0) {
                         // We need to wait for all the vCPUs to finish their quantum.
                         uint64_t new_generation = dynamic_barrier_polling_wait(&quantum_barrier, cpu->env_ptr->quantum_budget_and_generation.separated.quantum_generation);
-                        // uint64_t next_generation = dynamic_barrier_polling_wait(&quantum_barrier);
-                        // if ((next_generation * quantum_size) % 1000000 == 0) {
-                        //         fprintf(
-                        //             timer_fp, 
-                        //             "%lu,%lu,%lu,%lu,%lu,%lu,%lu\n", 
-                        //             cpu->env_ptr->timer_interrupts_frequency[0], 
-                        //             cpu->env_ptr->timer_interrupts_frequency[1], 
-                        //             cpu->env_ptr->timer_interrupts_frequency[2], 
-                        //             cpu->env_ptr->timer_interrupts_frequency[3], 
-                        //             cpu->env_ptr->timer_interrupts_frequency[4],
-                        //             total_icount,
-                        //             exclusive_icount
-                        //         );
-                        //         fflush(timer_fp);
-                        // }
-                        // total_icount += (int64_t)quantum_size - cpu->env_ptr->quantum_budget;
+                        uint64_t old_generation = cpu->env_ptr->quantum_budget_and_generation.separated.quantum_generation;
+                        
+                        // check whether there is a overflow from the new generation to the old generation.
+                        bool overflow = (new_generation < old_generation);
+
+                        // We the need to increase the upper bound generation number when there is a overflow.
+                        if (overflow) {
+                            cpu->env_ptr->quantum_generation_upper32 += 1;
+                        }
 
                         uint64_t new_budget_and_generation = cpu->env_ptr->quantum_budget_and_generation.separated.quantum_budget + quantum_size;
                         new_budget_and_generation = new_budget_and_generation << 32 | new_generation;
@@ -184,21 +177,15 @@ cpu_resume_from_quantum:
                 if (is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
                     while (cpu->env_ptr->quantum_budget_and_generation.separated.quantum_budget <= quantum_for_deduction) {
                         uint64_t new_generation = dynamic_barrier_polling_wait(&quantum_barrier, cpu->env_ptr->quantum_budget_and_generation.separated.quantum_generation);
-                        // uint64_t next_generation = dynamic_barrier_polling_wait(&quantum_barrier);
-                        // if ((next_generation * quantum_size) % 1000000 == 0) {
-                        //         fprintf(
-                        //             timer_fp, 
-                        //             "%lu,%lu,%lu,%lu,%lu,%lu,%lu\n", 
-                        //             cpu->env_ptr->timer_interrupts_frequency[0], 
-                        //             cpu->env_ptr->timer_interrupts_frequency[1], 
-                        //             cpu->env_ptr->timer_interrupts_frequency[2], 
-                        //             cpu->env_ptr->timer_interrupts_frequency[3], 
-                        //             cpu->env_ptr->timer_interrupts_frequency[4],
-                        //             total_icount,
-                        //             exclusive_icount + 1
-                        //         );
-                        //         fflush(timer_fp);
-                        // }
+                        uint64_t old_generation = cpu->env_ptr->quantum_budget_and_generation.separated.quantum_generation;
+                        
+                        bool overflow = (new_generation < old_generation);
+
+                        // We the need to increase the upper bound generation number when there is a overflow.
+                        if (overflow) {
+                            cpu->env_ptr->quantum_generation_upper32 += 1;
+                        }
+
                         uint64_t new_budget_and_generation = cpu->env_ptr->quantum_budget_and_generation.separated.quantum_budget + quantum_size;
                         new_budget_and_generation = new_budget_and_generation << 32 | new_generation;
                         cpu->env_ptr->quantum_budget_and_generation.combined = new_budget_and_generation;
@@ -247,6 +234,13 @@ cpu_resume_from_quantum:
                         assert(other_cpu_budget <= 0);
                     }
                 }
+            }
+
+            uint64_t old_generation = cpu->env_ptr->quantum_budget_and_generation.separated.quantum_generation;
+            bool overflow = (current_quantum_generation < old_generation);
+
+            if (overflow) {
+                cpu->env_ptr->quantum_generation_upper32 += 1;
             }
 
             if (current_generation_count) {
