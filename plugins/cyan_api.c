@@ -237,4 +237,12 @@ uint64_t qemu_plugin_read_local_virtual_time_base(void) {
   return vtime;
 }
 
+uint64_t qemu_plugin_get_quantum_size(void) {
+  if (quantum_enabled()) {
+    return quantum_size;
+  }
+  
+  return 0;
+}
+
 #endif

@@ -881,4 +881,11 @@ CYAN_API bool qemu_plugin_register_quantum_deplete_cb(qemu_plugin_quantum_deplet
  */
 CYAN_API uint64_t qemu_plugin_read_local_virtual_time_base(void);
 
+/**
+ * qemu_plugin_get_quantum_size - return the quantum size.
+ * 
+ * Return 0 if the quantum is not enabled. 
+ */
+CYAN_API uint64_t qemu_plugin_get_quantum_size(void);
+
 #endif /* QEMU_QEMU_PLUGIN_H */
