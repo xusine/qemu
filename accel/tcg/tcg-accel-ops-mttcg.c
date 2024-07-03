@@ -164,6 +164,8 @@ static void *mttcg_cpu_thread_fn(void *arg)
 
     bool not_running_yet = true;
 
+    uint64_t dumping_threshold = 300 * 1000 * 1000; // 300M
+
     uint64_t ts0 = get_current_timestamp_ns();
     do {
         if (cpu_can_run(cpu)) {
@@ -227,8 +229,9 @@ cpu_resume_from_quantum:
                         statistic_head_counter += 1;
                         assert(statistic_head_counter == new_generation);
 
-                        if (statistic_head_counter == RECORD_SIZE + SKIP_SIZE) {
+                        if (statistic_head_counter > SKIP_SIZE && (statistic_head_counter - SKIP_SIZE) * quantum_size > dumping_threshold) {
                             dump_log(cpu, statistics);
+                            dumping_threshold += 300 * 1000 * 1000;
                         }
 
 
@@ -291,8 +294,9 @@ cpu_resume_from_quantum:
                         statistic_head_counter += 1;
                         assert(statistic_head_counter == new_generation);
 
-                        if (statistic_head_counter == RECORD_SIZE + SKIP_SIZE) {
+                        if (statistic_head_counter > SKIP_SIZE && (statistic_head_counter - SKIP_SIZE) * quantum_size > dumping_threshold) {
                             dump_log(cpu, statistics);
+                            dumping_threshold += 300 * 1000 * 1000;
                         }
 
                         ts0 = get_current_timestamp_ns(); // reset the starting time of the next quantum.
@@ -348,8 +352,9 @@ cpu_resume_from_quantum:
                     statistics[statistic_head_counter - SKIP_SIZE].total_time = (get_current_timestamp_ns() - ts0);
                 }
                 statistic_head_counter += 1;
-                if (statistic_head_counter == RECORD_SIZE + SKIP_SIZE) {
+                if (statistic_head_counter > SKIP_SIZE && (statistic_head_counter - SKIP_SIZE) * quantum_size > dumping_threshold) {
                     dump_log(cpu, statistics);
+                    dumping_threshold += 300 * 1000 * 1000;
                 }
                 ts0 = get_current_timestamp_ns(); // reset the starting time of the next quantum. 
             }
