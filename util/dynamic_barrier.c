@@ -166,13 +166,14 @@ uint32_t dynamic_barrier_polling_wait(dynamic_barrier_polling_t *barrier, uint32
     uint64_t waiting_count = barrier->count; 
     
     if (waiting_count == barrier->threshold - 1) {
-        if ((current_gen + 1) * quantum_size >= 1000000000) {
-            if (quantum_deplete_cb != NULL) {
-                printf("Quantum is depleted\n");
-                quantum_deplete_cb(); 
-                exit(0);
-            }
-        }
+        // if ((current_gen + 1) > 6000) {
+        //     if (quantum_deplete_cb != NULL) {
+        //         quantum_deplete_cb(); 
+        //     }
+
+        //     printf("Quantum is depleted\n");
+        //     exit(0);
+        // }
 
         barrier->count = 0;
 
@@ -211,16 +212,17 @@ int dynamic_barrier_polling_decrease_by_1(dynamic_barrier_polling_t *barrier) {
 
     barrier->threshold -= 1;
     uint64_t waiting_count = barrier->count;
-    uint64_t current_gen = atomic_load(&barrier->generation);
+    // uint64_t current_gen = atomic_load(&barrier->generation);
 
-    if (waiting_count == barrier->threshold) {
-        if ((current_gen + 1) * quantum_size >= 1000000000) {
-            if (quantum_deplete_cb != NULL) {
-                printf("Quantum is depleted\n");
-                quantum_deplete_cb(); 
-                exit(0);
-            }
-        }
+    if (waiting_count == barrier->threshold && waiting_count != 0) {
+        // if ((current_gen + 1) > 6000) {
+        //     if (quantum_deplete_cb != NULL) {
+        //         quantum_deplete_cb(); 
+        //     }
+
+        //     printf("Quantum is depleted\n");
+        //     exit(0);
+        // }
 
         barrier->count = 0;
 
@@ -232,3 +234,9 @@ int dynamic_barrier_polling_decrease_by_1(dynamic_barrier_polling_t *barrier) {
     return 0;
 }
 
+void dynamic_barrier_polling_reset(dynamic_barrier_polling_t *barrier) {
+    dynamic_barrier_polling_acquire_lock(barrier);
+    atomic_store(&barrier->generation, 0); // this should make everyone to not wait. 
+    barrier->count = 0;
+    dynamic_barrier_polling_release_lock(barrier);
+}

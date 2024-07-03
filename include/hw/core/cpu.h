@@ -444,7 +444,11 @@ struct CPUState {
     /* track IOMMUs whose translations we've cached in the TCG TLB */
     GArray *iommu_notifiers;
 
-    uint64_t unknown_time;
+    /* State for the time calculation */
+    uint64_t unknown_time; // whether this core does not have its time accurately reflected by its instruction. 
+    uint64_t enter_idle_time; // number of  times when this core enters the idle mode
+    uint64_t target_cycle_on_idle; // number of target cycles that are deduced due to the idle time.
+    uint64_t target_cycle_on_instruction; 
 };
 
 typedef QTAILQ_HEAD(CPUTailQ, CPUState) CPUTailQ;

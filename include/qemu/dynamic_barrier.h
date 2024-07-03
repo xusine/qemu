@@ -49,6 +49,7 @@ int dynamic_barrier_polling_destroy(dynamic_barrier_polling_t *barrier);
 uint32_t dynamic_barrier_polling_wait(dynamic_barrier_polling_t *barrier, uint32_t private_generation); // return the current quantum generation after waiting for the barrier.
 uint32_t dynamic_barrier_polling_increase_by_1(dynamic_barrier_polling_t *barrier); // return the current generation while this thread is added. 
 int dynamic_barrier_polling_decrease_by_1(dynamic_barrier_polling_t *barrier);
+void dynamic_barrier_polling_reset(dynamic_barrier_polling_t *barrier);
 
 
 

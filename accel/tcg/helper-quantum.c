@@ -21,6 +21,9 @@ uint32_t HELPER(check_and_deduce_quantum)(CPUArchState *env) {
         return false;
     }
 
+    assert(current_cpu->env_ptr == env);
+    current_cpu->target_cycle_on_instruction += env->quantum_required;
+
     env->quantum_budget_and_generation.separated.quantum_budget -= env->quantum_required;
     env->quantum_required = 0;
     if (env->quantum_budget_and_generation.separated.quantum_budget <= 0) {
