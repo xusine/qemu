@@ -466,6 +466,10 @@ static QemuOptsList qemu_quantum_opts = {
             .name = "range",
             .type = QEMU_OPT_STRING
         },
+        {
+            .name = "deplete_threshold",
+            .type = QEMU_OPT_NUMBER
+        },
         { /* end of list */ }
     },
 };
