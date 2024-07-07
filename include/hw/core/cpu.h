@@ -447,7 +447,13 @@ struct CPUState {
 
     /* State for the time calculation */
     uint64_t current_quantum_size;
-    int64_t quantum_budget;
+
+    // This pair has to be atomically read while calculating the system time in the quantum middle.
+    struct {
+        uint32_t generation;
+        int32_t budget;
+    } quantum_info;
+    
     int quantum_budget_depleted;
 
 

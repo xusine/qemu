@@ -32,12 +32,17 @@
 #include "qemu/main-loop.h"
 #include "qemu/option.h"
 #include "qemu/seqlock.h"
+#include "sysemu/quantum.h"
 #include "sysemu/replay.h"
 #include "sysemu/runstate.h"
 #include "hw/core/cpu.h"
 #include "sysemu/cpu-timers.h"
 #include "sysemu/cpu-throttle.h"
 #include "timers-state.h"
+
+#include "qemu/dynamic_barrier.h"
+
+extern dynamic_barrier_polling_t quantum_barrier;
 
 /* clock and ticks */
 
@@ -76,9 +81,18 @@ int64_t cpu_get_clock_locked(void)
 {
     int64_t time;
 
-    if (cyan_cpu_clock_cb) {
-        return cyan_cpu_clock_cb();
+    if (quantum_enabled()) {
+        time = timers_state.quantum_virtual_clock_offset;
+        if (timers_state.cpu_ticks_enabled) {
+            time += dynamic_barrier_polling_evaluate_host_time(&quantum_barrier);
+        }
+
+        return time;
     }
+
+    // if (cyan_cpu_clock_cb) {
+    //     return cyan_cpu_clock_cb();
+    // }
 
     time = timers_state.cpu_clock_offset;
     if (timers_state.cpu_ticks_enabled) {
@@ -117,9 +131,11 @@ void cpu_enable_ticks(void)
         // save the snapshot vm_clock before it is cleaned.
         timers_state.virtual_clock_snapshot = timers_state.cpu_clock_offset;
         
-        if (cyan_snapshot_cpu_clock_udpate_cb) {
-            cyan_snapshot_cpu_clock_udpate_cb();
-        }
+        // if (cyan_snapshot_cpu_clock_udpate_cb) {
+        //     cyan_snapshot_cpu_clock_udpate_cb();
+        // }
+
+        timers_state.quantum_virtual_clock_offset = timers_state.cpu_clock_offset - quantum_barrier.current_system_target_time;
 
         timers_state.cpu_ticks_offset -= cpu_get_host_ticks();
         // this value is not used when `cyan_cpu_clock_cb` is set and the tick is enabled.

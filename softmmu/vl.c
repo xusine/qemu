@@ -470,6 +470,10 @@ static QemuOptsList qemu_quantum_opts = {
             .name = "deplete_threshold",
             .type = QEMU_OPT_NUMBER
         },
+        {
+            .name = "respecting_deadline",
+            .type = QEMU_OPT_BOOL
+        },
         { /* end of list */ }
     },
 };

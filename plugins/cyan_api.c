@@ -218,10 +218,10 @@ uint64_t qemu_plugin_read_local_virtual_time_base(void) {
   g_assert(cpu != NULL);
 
   uint64_t vtime = cpu->last_synced_target_time + cpu->current_quantum_size;
-  uint64_t quantum_budget = cpu->quantum_budget;
+  int32_t quantum_budget = cpu->quantum_info.budget;
   
   // remove the existing quantum budget.
-  if (cpu->quantum_budget < 0) {
+  if (quantum_budget < 0) {
     quantum_budget = -quantum_budget;
     vtime += (uint64_t) quantum_budget;
   } else {

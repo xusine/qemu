@@ -180,13 +180,16 @@ void dynamic_barrier_polling_wait(dynamic_barrier_polling_t *barrier) {
         // increase the system time.
         barrier->current_system_target_time += barrier->current_generation_budget;
 
-        // determine the next quantum budget. It requires to know the next deadline. 
-        // int64_t deadline = qemu_clock_deadline_ns_all(QEMU_CLOCK_VIRTUAL, ~QEMU_TIMER_ATTR_EXTERNAL);
-        // assert(deadline >= 0); // we should not see a deadline in the past.
+        if (quantum_respecting_deadline && quantum_size > 100000) { // 100us, takes 10ms
+            // determine the next quantum budget. It requires to know the next deadline. 
+            int64_t deadline = qemu_clock_deadline_ns_all(QEMU_CLOCK_VIRTUAL, ~QEMU_TIMER_ATTR_EXTERNAL);
+            assert(deadline >= 0); // we should not see a deadline in the past.
 
-        // what is the next quantum size?
-        // barrier->current_generation_budget = deadline > quantum_size ? quantum_size : deadline;
-        barrier->current_generation_budget = quantum_size;
+            // what is the next quantum size?
+            barrier->current_generation_budget = deadline > quantum_size ? quantum_size : deadline;
+        } else {
+            barrier->current_generation_budget = quantum_size;
+        }
 
         barrier->count = 0;
 
@@ -238,19 +241,23 @@ int dynamic_barrier_polling_decrease_by_1(dynamic_barrier_polling_t *barrier) {
         // increase the system time.
         barrier->current_system_target_time += barrier->current_generation_budget;
 
-        // determine the next quantum budget. It requires to know the next deadline. 
-        // int64_t deadline = qemu_clock_deadline_ns_all(QEMU_CLOCK_VIRTUAL, ~QEMU_TIMER_ATTR_EXTERNAL);
-        // assert(deadline >= 0); // we should not see a deadline in the past.
+        if (quantum_respecting_deadline && quantum_size > 100000) { // 100us, takes 10ms
+            // determine the next quantum budget. It requires to know the next deadline. 
+            int64_t deadline = qemu_clock_deadline_ns_all(QEMU_CLOCK_VIRTUAL, ~QEMU_TIMER_ATTR_EXTERNAL);
+            assert(deadline >= 0); // we should not see a deadline in the past.
 
-        // what is the next quantum size?
-        // barrier->current_generation_budget = deadline > quantum_size ? quantum_size : deadline;
-        barrier->current_generation_budget = quantum_size;
+            // what is the next quantum size?
+            barrier->current_generation_budget = deadline > quantum_size ? quantum_size : deadline;
+        } else {
+            barrier->current_generation_budget = quantum_size;
+        }
 
 
         barrier->count = 0;
 
         // increase the generation and notify others.
         atomic_fetch_add(&barrier->generation, 1);
+    } else {
     }
 
     dynamic_barrier_polling_release_lock(barrier);

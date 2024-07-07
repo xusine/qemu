@@ -487,7 +487,7 @@ void qemu_cpu_kick(CPUState *cpu)
     if (current_cpu != NULL && current_cpu != cpu) {
         // well, this is for notification.
         // Hypo: confirm that IPI can cause the target CPU to wake up.
-        cpu->kicker_time = current_cpu->last_synced_target_time + ( current_cpu->current_quantum_size - current_cpu->quantum_budget);
+        cpu->kicker_time = current_cpu->last_synced_target_time + (uint64_t)((int32_t)current_cpu->current_quantum_size - current_cpu->quantum_info.budget);
     } else if (current_cpu == NULL) {
         cpu->kicker_time = 0; // well, you are kicked by someone else...
     }

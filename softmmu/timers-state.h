@@ -55,6 +55,8 @@ typedef struct TimersState {
     /* Add by Shanqing. the vm_clock from the recent snapshot */
     int64_t virtual_clock_snapshot;
 
+    int64_t quantum_virtual_clock_offset;
+
     /* Only written by TCG thread */
     int64_t qemu_icount;
 
