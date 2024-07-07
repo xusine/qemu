@@ -10,7 +10,10 @@
 
 void HELPER(deduce_quantum)(CPUArchState *env) {
     assert(quantum_enabled());
-    env->quantum_budget_and_generation.separated.quantum_budget -= env->quantum_required;
+
+    assert(current_cpu->env_ptr == env);
+    current_cpu->quantum_budget -= env->quantum_required;
+
     env->quantum_required = 0;
 }
 
@@ -22,12 +25,13 @@ uint32_t HELPER(check_and_deduce_quantum)(CPUArchState *env) {
     }
 
     assert(current_cpu->env_ptr == env);
+    current_cpu->quantum_budget -= env->quantum_required;
+    
     current_cpu->target_cycle_on_instruction += env->quantum_required;
 
-    env->quantum_budget_and_generation.separated.quantum_budget -= env->quantum_required;
     env->quantum_required = 0;
-    if (env->quantum_budget_and_generation.separated.quantum_budget <= 0) {
-        env->quantum_budget_depleted = 1;
+    if (current_cpu->quantum_budget <= 0) {
+        current_cpu->quantum_budget_depleted = 1;
         return true;
     }
     return false;
@@ -35,8 +39,11 @@ uint32_t HELPER(check_and_deduce_quantum)(CPUArchState *env) {
 
 void HELPER(deplete_quantum_budget)(CPUArchState *env) {
     assert(quantum_enabled());
-    env->quantum_budget_and_generation.separated.quantum_budget = 0;
-    env->quantum_budget_depleted = 1;
+
+    assert(current_cpu->env_ptr == env);
+
+    current_cpu->quantum_budget = 0;
+    current_cpu->quantum_budget_depleted = 1;
 }
 
 void HELPER(set_quantum_requirement_example)(CPUArchState *env, uint32_t requirement) {

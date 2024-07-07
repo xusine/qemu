@@ -23,6 +23,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "hw/core/cpu.h"
 #include "monitor/monitor.h"
 #include "qemu/coroutine-tls.h"
 #include "qapi/error.h"
@@ -422,10 +423,10 @@ void qemu_wait_io_event_common(CPUState *cpu)
     process_queued_cpu_work(cpu);
 }
 
-uint64_t qemu_wait_io_event(CPUState *cpu, bool not_running_yet, uint32_t *current_quantum_generation)
+bool qemu_wait_io_event(CPUState *cpu, bool not_running_yet)
 {
     bool slept = false;
-    uint64_t idle_latency = 0;
+    bool go_to_sleep = false;
 
     while (cpu_thread_is_idle(cpu)) {
         if (!slept) {
@@ -438,21 +439,14 @@ uint64_t qemu_wait_io_event(CPUState *cpu, bool not_running_yet, uint32_t *curre
             assert(dynamic_barrier_polling_decrease_by_1(&quantum_barrier) == 0);
         }
 
-        uint64_t current_cpu_clock = cpu_get_clock_locked();
-
         qemu_cond_wait(cpu->halt_cond, &qemu_global_mutex);
-
-        uint64_t current_cpu_clock_after_io = cpu_get_clock_locked();
 
         if (!not_running_yet && is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
             // After sleep, you should let the quantum barrier know that I will be involved.
-            *current_quantum_generation = dynamic_barrier_polling_increase_by_1(&quantum_barrier);
-
-            idle_latency += current_cpu_clock_after_io - current_cpu_clock;
-
+            dynamic_barrier_polling_increase_by_1(&quantum_barrier);
         }
 
-        idle_latency = 1;
+        go_to_sleep = true;
     }
     if (slept) {
         qemu_plugin_vcpu_resume_cb(cpu);
@@ -466,7 +460,7 @@ uint64_t qemu_wait_io_event(CPUState *cpu, bool not_running_yet, uint32_t *curre
 #endif
     qemu_wait_io_event_common(cpu);
 
-    return idle_latency;
+    return go_to_sleep;
 }
 
 void cpus_kick_thread(CPUState *cpu)
@@ -489,6 +483,15 @@ void cpus_kick_thread(CPUState *cpu)
 
 void qemu_cpu_kick(CPUState *cpu)
 {
+    // well, if it is not kicked by itself, and there is a current cpu, we can set the kicker's time to pass the message.
+    if (current_cpu != NULL && current_cpu != cpu) {
+        // well, this is for notification.
+        // Hypo: confirm that IPI can cause the target CPU to wake up.
+        cpu->kicker_time = current_cpu->last_synced_target_time + ( current_cpu->current_quantum_size - current_cpu->quantum_budget);
+    } else if (current_cpu == NULL) {
+        cpu->kicker_time = 0; // well, you are kicked by someone else...
+    }
+
     qemu_cond_broadcast(cpu->halt_cond);
     if (cpus_accel->kick_vcpu_thread) {
         cpus_accel->kick_vcpu_thread(cpu);

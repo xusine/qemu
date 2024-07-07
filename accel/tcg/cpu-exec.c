@@ -912,7 +912,7 @@ static inline bool cpu_handle_interrupt(CPUState *cpu,
     }
 
     // In the end, we check the quantum depletion. 
-    if (cpu->env_ptr->quantum_budget_depleted && is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
+    if (cpu->quantum_budget_depleted && is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
         if (cpu->exception_index == -1) {
             cpu->exception_index = EXCP_QUANTUM;
         }
@@ -950,7 +950,7 @@ static inline void cpu_loop_exec_tb(CPUState *cpu, TranslationBlock *tb,
 
     if (!icount_enabled()) {
         // nice. this is due to quantum deplete.
-        assert(cpu->env_ptr->quantum_budget_depleted == 1);
+        assert(cpu->quantum_budget_depleted == 1);
         return;
     }
 

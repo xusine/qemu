@@ -444,11 +444,23 @@ struct CPUState {
     /* track IOMMUs whose translations we've cached in the TCG TLB */
     GArray *iommu_notifiers;
 
+
     /* State for the time calculation */
+    uint64_t current_quantum_size;
+    int64_t quantum_budget;
+    int quantum_budget_depleted;
+
+
     uint64_t unknown_time; // whether this core does not have its time accurately reflected by its instruction. 
     uint64_t enter_idle_time; // number of  times when this core enters the idle mode
     uint64_t target_cycle_on_idle; // number of target cycles that are deduced due to the idle time.
     uint64_t target_cycle_on_instruction; 
+
+    uint64_t last_synced_target_time; // the time calculated with own instruction execution.
+    uint64_t __padding1__[7];
+
+    uint64_t kicker_time;
+    uint64_t __padding2__[7];
 };
 
 typedef QTAILQ_HEAD(CPUTailQ, CPUState) CPUTailQ;

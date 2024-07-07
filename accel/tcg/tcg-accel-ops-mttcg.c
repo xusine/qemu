@@ -164,7 +164,7 @@ static void *mttcg_cpu_thread_fn(void *arg)
 
     bool not_running_yet = true;
 
-    uint64_t dumping_threshold = 300 * 1000 * 1000; // 300M
+    // uint64_t dumping_threshold = 300 * 1000 * 1000; // 300M
 
     uint64_t ts0 = get_current_timestamp_ns();
     do {
@@ -175,11 +175,16 @@ static void *mttcg_cpu_thread_fn(void *arg)
                 cpu->enter_idle_time = 0;
                 cpu->target_cycle_on_idle = 0;
                 cpu->target_cycle_on_instruction = 0;
+                cpu->last_synced_target_time = 0;
+                cpu->quantum_budget = quantum_size; // what is the first quantum budget?
+                cpu->current_quantum_size = quantum_size; // this should be set properly as well. 
+                cpu->quantum_budget_depleted = false;
+                cpu->kicker_time = 0;
 
                 // register the current thread to the barrier.
                 if (is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
                     dynamic_barrier_polling_increase_by_1(&quantum_barrier);
-                    printf("Quantum Count: %lu \n", quantum_size);
+                    printf("CPU %u is managed by the quantum \n", cpu->cpu_index);
                 }
 
                 not_running_yet = false;
@@ -195,45 +200,27 @@ cpu_resume_from_quantum:
                 statistics[statistic_head_counter - SKIP_SIZE].execution_time += (get_current_timestamp_ns() - ts1); // record the execution time.
             }
             // check the quantum budget and sync before doing I/O operation.
-            if (cpu->env_ptr->quantum_budget_depleted) {
-                cpu->env_ptr->quantum_budget_depleted = false;
+            if (cpu->quantum_budget_depleted) {
+                cpu->quantum_budget_depleted = false;
                 if (is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
-                    while (cpu->env_ptr->quantum_budget_and_generation.separated.quantum_budget <= 0) {
+                    while (cpu->quantum_budget <= 0) {
                         // We need to wait for all the vCPUs to finish their quantum.
-                        uint32_t old_generation = cpu->env_ptr->quantum_budget_and_generation.separated.quantum_generation;
-                        assert(old_generation == statistic_head_counter);
                         uint64_t start_waiting = get_current_timestamp_ns();
-                        uint64_t new_generation = dynamic_barrier_polling_wait(&quantum_barrier, cpu->env_ptr->quantum_budget_and_generation.separated.quantum_generation);
+                        dynamic_barrier_polling_wait(&quantum_barrier);
+                        cpu->quantum_budget += quantum_barrier.current_generation_budget;
+                        cpu->current_quantum_size = quantum_barrier.current_generation_budget;
+                        // this can potentially notify others, so it has to wait for the previous budget to complete.
+                        atomic_store(&cpu->last_synced_target_time, quantum_barrier.current_system_target_time); 
                         
-                        // check whether there is a overflow from the new generation to the old generation.
-                        bool overflow = (new_generation < old_generation);
-
-                        // We the need to increase the upper bound generation number when there is a overflow.
-                        if (overflow) {
-                            cpu->env_ptr->quantum_generation_upper32 += 1;
-                        }
-                        
-                        assert(new_generation == old_generation + 1);
                         if (statistic_head_counter < RECORD_SIZE + SKIP_SIZE && statistic_head_counter > SKIP_SIZE) {
                             statistics[statistic_head_counter-SKIP_SIZE].waiting_time += (get_current_timestamp_ns() - start_waiting); // increase the idle time.
                         }
-
-                        uint64_t new_budget_and_generation = cpu->env_ptr->quantum_budget_and_generation.separated.quantum_budget + quantum_size;
-                        new_budget_and_generation = new_budget_and_generation << 32 | new_generation;
-                        cpu->env_ptr->quantum_budget_and_generation.combined = new_budget_and_generation;
 
                         if (statistic_head_counter < RECORD_SIZE + SKIP_SIZE && statistic_head_counter > SKIP_SIZE) {
                             statistics[statistic_head_counter - SKIP_SIZE].total_time = (get_current_timestamp_ns() - ts0);
                         }
 
                         statistic_head_counter += 1;
-                        assert(statistic_head_counter == new_generation);
-
-                        if (statistic_head_counter > SKIP_SIZE && (statistic_head_counter - SKIP_SIZE) * quantum_size > dumping_threshold) {
-                            dump_log(cpu, statistics);
-                            dumping_threshold += 300 * 1000 * 1000;
-                        }
-
 
                         ts0 = get_current_timestamp_ns(); // reset the starting time of the next quantum. 
                     }
@@ -264,27 +251,17 @@ cpu_resume_from_quantum:
                 int64_t quantum_for_deduction = cpu->env_ptr->quantum_required;
                 // We need to sync immediately to get the quantum budget. 
                 if (is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
-                    while (cpu->env_ptr->quantum_budget_and_generation.separated.quantum_budget <= quantum_for_deduction) {
-                        uint32_t old_generation = cpu->env_ptr->quantum_budget_and_generation.separated.quantum_generation;
-                        assert(old_generation == statistic_head_counter);
+                    while (cpu->quantum_budget <= quantum_for_deduction) {
                         uint64_t start_waiting = get_current_timestamp_ns();
-                        uint64_t new_generation = dynamic_barrier_polling_wait(&quantum_barrier, cpu->env_ptr->quantum_budget_and_generation.separated.quantum_generation);
-                        
-                        bool overflow = (new_generation < old_generation);
-
-                        // We the need to increase the upper bound generation number when there is a overflow.
-                        if (overflow) {
-                            cpu->env_ptr->quantum_generation_upper32 += 1;
-                        }
-                        assert(new_generation == old_generation + 1);
+                        dynamic_barrier_polling_wait(&quantum_barrier);
+                        cpu->quantum_budget += quantum_barrier.current_generation_budget;
+                        cpu->current_quantum_size = quantum_barrier.current_generation_budget;
+                        // this can potentially notify others, so it has to wait for the previous budget to complete.
+                        atomic_store(&cpu->last_synced_target_time, quantum_barrier.current_system_target_time); 
                         
                         if (statistic_head_counter < RECORD_SIZE + SKIP_SIZE && statistic_head_counter > SKIP_SIZE) {
                             statistics[statistic_head_counter-SKIP_SIZE].waiting_time += (get_current_timestamp_ns() - start_waiting); // increase the idle time.
                         }
-
-                        uint64_t new_budget_and_generation = cpu->env_ptr->quantum_budget_and_generation.separated.quantum_budget + quantum_size;
-                        new_budget_and_generation = new_budget_and_generation << 32 | new_generation;
-                        cpu->env_ptr->quantum_budget_and_generation.combined = new_budget_and_generation;
 
                         // last quantum ends here. 
                         if (statistic_head_counter < RECORD_SIZE + SKIP_SIZE && statistic_head_counter > SKIP_SIZE) {
@@ -292,17 +269,10 @@ cpu_resume_from_quantum:
                         }
 
                         statistic_head_counter += 1;
-                        assert(statistic_head_counter == new_generation);
-
-                        if (statistic_head_counter > SKIP_SIZE && (statistic_head_counter - SKIP_SIZE) * quantum_size > dumping_threshold) {
-                            dump_log(cpu, statistics);
-                            dumping_threshold += 300 * 1000 * 1000;
-                        }
-
                         ts0 = get_current_timestamp_ns(); // reset the starting time of the next quantum.
                     }
                 }
-                assert(cpu->env_ptr->quantum_budget_depleted == false);
+                assert(cpu->quantum_budget_depleted == false);
                 // Now it is safe to execute the next instruction. It will not trigger quantum depleting and rollback.
                 ts1 = get_current_timestamp_ns();
                 cpu_exec_step_atomic(cpu);
@@ -310,7 +280,7 @@ cpu_resume_from_quantum:
                     statistics[statistic_head_counter - SKIP_SIZE].execution_time += (get_current_timestamp_ns() - ts1); // record the execution time.
                 }
                 // It is impossible to see the quantum is depleted here, because we leave the budget for the exclusive instruction.
-                assert(cpu->env_ptr->quantum_budget_depleted == false);
+                assert(cpu->quantum_budget_depleted == false);
                 // exclusive_icount += 1;
                 qemu_mutex_lock_iothread();
             default:
@@ -320,17 +290,11 @@ cpu_resume_from_quantum:
         }
 
         qatomic_set_mb(&cpu->exit_request, 0);
-        uint32_t current_quantum_generation = 0;
         uint64_t wait_start_ts = get_current_timestamp_ns();
-        uint64_t has_slept = qemu_wait_io_event(cpu, not_running_yet, &current_quantum_generation);
+        bool has_slept = qemu_wait_io_event(cpu, not_running_yet);
+        uint64_t current_target_time = quantum_barrier.current_system_target_time;
         if (statistic_head_counter < RECORD_SIZE + SKIP_SIZE && statistic_head_counter > SKIP_SIZE) {
             statistics[statistic_head_counter - SKIP_SIZE].idle_time += (get_current_timestamp_ns() - wait_start_ts); // increase the idle time.
-        }
-        uint32_t old_generation = cpu->env_ptr->quantum_budget_and_generation.separated.quantum_generation;
-
-        // assert(statistic_head_counter == old_generation);
-        if (statistic_head_counter != old_generation) {
-            printf("statistic_head_counter: %lu, old_generation: %u\n", statistic_head_counter, old_generation);
         }
         
         uint64_t time_calculation_ts = get_current_timestamp_ns();
@@ -342,28 +306,27 @@ cpu_resume_from_quantum:
             // Now, the problem is that remaining. This part should be deducted from the quantum budget.
 
             // We can look at what other CPUs are doing right now.
-            assert(current_quantum_generation >= old_generation); 
             assert(cpu->unknown_time == 1);
 
             // so the statistics between [old_generation,  new_generation) is done. 
-            for(uint64_t generation_idx = old_generation; generation_idx < current_quantum_generation; ++generation_idx) {
-                // End the current one.
-                if (statistic_head_counter < RECORD_SIZE + SKIP_SIZE && statistic_head_counter > SKIP_SIZE) {
-                    statistics[statistic_head_counter - SKIP_SIZE].total_time = (get_current_timestamp_ns() - ts0);
-                }
-                statistic_head_counter += 1;
-                if (statistic_head_counter > SKIP_SIZE && (statistic_head_counter - SKIP_SIZE) * quantum_size > dumping_threshold) {
-                    dump_log(cpu, statistics);
-                    dumping_threshold += 300 * 1000 * 1000;
-                }
-                ts0 = get_current_timestamp_ns(); // reset the starting time of the next quantum. 
-            }
+            // TODO: This part requires a rework, because we don't return the target time.
+            // for(uint64_t generation_idx = old_generation; generation_idx < current_quantum_generation; ++generation_idx) {
+            //     // End the current one.
+            //     if (statistic_head_counter < RECORD_SIZE + SKIP_SIZE && statistic_head_counter > SKIP_SIZE) {
+            //         statistics[statistic_head_counter - SKIP_SIZE].total_time = (get_current_timestamp_ns() - ts0);
+            //     }
+            //     statistic_head_counter += 1;
+            //     // if (statistic_head_counter > SKIP_SIZE && (statistic_head_counter - SKIP_SIZE) * quantum_size > dumping_threshold) {
+            //     //     dump_log(cpu, statistics);
+            //     //     dumping_threshold += 300 * 1000 * 1000;
+            //     // }
+            //     ts0 = get_current_timestamp_ns(); // reset the starting time of the next quantum. 
+            // }
 
-            assert(statistic_head_counter == current_quantum_generation);
 
             cpu->enter_idle_time += 1;
 
-            int32_t old_budget = cpu->env_ptr->quantum_budget_and_generation.separated.quantum_budget;
+            int64_t old_budget = cpu->quantum_budget;
 
             CPUState *iter_cpu;
             uint64_t current_generation_count = 0;
@@ -371,10 +334,8 @@ cpu_resume_from_quantum:
 
             CPU_FOREACH(iter_cpu) {
                 if (iter_cpu->unknown_time == 0 && iter_cpu != cpu && is_vcpu_affiliated_with_quantum(iter_cpu->cpu_index)) {
-                    uint64_t other_cpu_budget_and_generation = iter_cpu->env_ptr->quantum_budget_and_generation.combined;
-                    int32_t other_cpu_budget = other_cpu_budget_and_generation >> 32;
-                    uint32_t other_cpu_generation = other_cpu_budget_and_generation & 0xFFFFFFFF;
-                    if (other_cpu_generation == current_quantum_generation) {
+                    int64_t other_cpu_budget = iter_cpu->quantum_budget;
+                    if (iter_cpu->last_synced_target_time == current_target_time) {
                         if (other_cpu_budget < 0) other_cpu_budget = 0;
                         current_generation_budget += other_cpu_budget;
                         current_generation_count += 1;
@@ -384,25 +345,20 @@ cpu_resume_from_quantum:
                 }
             }
 
-            uint64_t old_generation = cpu->env_ptr->quantum_budget_and_generation.separated.quantum_generation;
-            bool overflow = (current_quantum_generation < old_generation);
-
-            if (overflow) {
-                cpu->env_ptr->quantum_generation_upper32 += 1;
-            }
+            uint64_t old_target_time = cpu->last_synced_target_time;
 
             if (current_generation_count) {
-                int32_t budget = current_generation_budget / current_generation_count;
-                if (budget < old_budget || old_generation != current_quantum_generation) { // we only apply the new budget when it is smaller than the consumption, or we are in a new generation.
-                    uint64_t new_budget_and_generation = (((uint64_t)budget) << 32) | current_quantum_generation;
-                    cpu->env_ptr->quantum_budget_and_generation.combined = new_budget_and_generation;
+                int64_t budget = current_generation_budget / current_generation_count;
+                if (budget < old_budget || old_target_time != current_target_time) { // we only apply the new budget when it is smaller than the consumption, or we are in a new generation.
+                    cpu->quantum_budget = budget;
+                    cpu->current_quantum_size = quantum_barrier.current_generation_budget;
 
-                    if (current_quantum_generation > old_generation) {
+                    if (current_target_time > old_target_time) {
                         // crossing multiple generations.
-                        cpu->target_cycle_on_idle += (current_quantum_generation - old_generation - 1) * quantum_size;
+                        cpu->target_cycle_on_idle += current_target_time - old_target_time;
 
                         if (old_budget >= 0) {
-                            cpu->target_cycle_on_idle += (quantum_size - budget) + old_budget;
+                            cpu->target_cycle_on_idle += (quantum_barrier.current_generation_budget - budget) + old_budget;
                         } else {
                             old_budget = -old_budget;
                             cpu->target_cycle_on_idle -= old_budget;
@@ -414,15 +370,15 @@ cpu_resume_from_quantum:
                 }
             } else {
                 // this must be the beginning of the quantum. 
-                if (current_quantum_generation > old_generation) {
-                    uint64_t new_budget_and_generation = (((uint64_t)quantum_size) << 32) | current_quantum_generation;
-                    cpu->env_ptr->quantum_budget_and_generation.combined = new_budget_and_generation;
+                if (current_target_time > old_target_time) {
+                    cpu->quantum_budget = quantum_barrier.current_generation_budget;
+                    cpu->current_quantum_size = quantum_barrier.current_generation_budget;
 
                     if (old_budget >= 0) {
-                        cpu->target_cycle_on_idle += (current_quantum_generation - old_generation - 1) * quantum_size + old_budget;
+                        cpu->target_cycle_on_idle += current_target_time - old_target_time + old_budget;
                     } else {
                         old_budget = -old_budget;
-                        cpu->target_cycle_on_idle += (current_quantum_generation - old_generation - 1) * quantum_size - old_budget;
+                        cpu->target_cycle_on_idle += current_target_time - old_target_time - old_budget;
                     }
 
                 } else {
