@@ -352,6 +352,8 @@ cpu_resume_from_quantum:
                 if (budget < old_budget || old_target_time != current_target_time) { // we only apply the new budget when it is smaller than the consumption, or we are in a new generation.
                     cpu->quantum_budget = budget;
                     cpu->current_quantum_size = quantum_barrier.current_generation_budget;
+                    atomic_store(&cpu->last_synced_target_time, quantum_barrier.current_system_target_time); 
+                    
 
                     if (current_target_time > old_target_time) {
                         // crossing multiple generations.
@@ -373,6 +375,8 @@ cpu_resume_from_quantum:
                 if (current_target_time > old_target_time) {
                     cpu->quantum_budget = quantum_barrier.current_generation_budget;
                     cpu->current_quantum_size = quantum_barrier.current_generation_budget;
+                    atomic_store(&cpu->last_synced_target_time, quantum_barrier.current_system_target_time); 
+
 
                     if (old_budget >= 0) {
                         cpu->target_cycle_on_idle += current_target_time - old_target_time + old_budget;
