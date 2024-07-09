@@ -10,8 +10,15 @@
 
 void HELPER(deduce_quantum)(CPUArchState *env) {
     assert(quantum_enabled());
-    env->quantum_budget_and_generation.separated.quantum_budget -= env->quantum_required;
-    env->quantum_required = 0;
+
+    assert(current_cpu->env_ptr == env);
+
+    // deduction.
+    int32_t quantum_to_deduce = env->quantum_required / current_cpu->ipc;
+    int32_t remanent_required = env->quantum_required % current_cpu->ipc;
+
+    env->quantum_budget_and_generation.separated.quantum_budget -= quantum_to_deduce;
+    env->quantum_required = remanent_required;
 }
 
 uint32_t HELPER(check_and_deduce_quantum)(CPUArchState *env) {
@@ -24,8 +31,13 @@ uint32_t HELPER(check_and_deduce_quantum)(CPUArchState *env) {
     assert(current_cpu->env_ptr == env);
     current_cpu->target_cycle_on_instruction += env->quantum_required;
 
-    env->quantum_budget_and_generation.separated.quantum_budget -= env->quantum_required;
-    env->quantum_required = 0;
+    // deduction.
+    int32_t quantum_to_deduce = env->quantum_required / current_cpu->ipc;
+    int32_t remanent_required = env->quantum_required % current_cpu->ipc;
+
+    env->quantum_budget_and_generation.separated.quantum_budget -= quantum_to_deduce;
+    env->quantum_required = remanent_required;
+    
     if (env->quantum_budget_and_generation.separated.quantum_budget <= 0) {
         env->quantum_budget_depleted = 1;
         return true;

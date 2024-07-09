@@ -449,6 +449,9 @@ struct CPUState {
     uint64_t enter_idle_time; // number of  times when this core enters the idle mode
     uint64_t target_cycle_on_idle; // number of target cycles that are deduced due to the idle time.
     uint64_t target_cycle_on_instruction; 
+
+    // State for deduction of the quantum.
+    uint64_t ipc; // instruction per quantum unit (i.e., quantum cycle)
 };
 
 typedef QTAILQ_HEAD(CPUTailQ, CPUState) CPUTailQ;

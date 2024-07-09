@@ -25,6 +25,7 @@
 
 #include "qemu/osdep.h"
 #include "sysemu/tcg.h"
+#include "qemu/typedefs.h"
 #include "sysemu/replay.h"
 #include "sysemu/cpu-timers.h"
 #include "qemu/main-loop.h"
@@ -127,6 +128,15 @@ static void *mttcg_cpu_thread_fn(void *arg)
 {
     MttcgForceRcuNotifier force_rcu;
     CPUState *cpu = arg;
+
+    cpu->ipc = 1;
+
+    MachineState *ms = MACHINE(qdev_get_machine());;
+
+    if (ms->smp.cpus % 2 == 0 && cpu->cpu_index >= ms->smp.cpus / 2) {
+        cpu->ipc = high_half_core_ipc;
+        printf("CPU %d is in the high IPC mode. Its IPC is %ld\n", cpu->cpu_index, cpu->ipc);
+    }
 
     assert(tcg_enabled());
     g_assert(!icount_enabled());
@@ -261,7 +271,7 @@ cpu_resume_from_quantum:
                 qemu_mutex_unlock_iothread();
                 // Well, it is possible that this atomic step may deplete the quantum budget.
                 // What we have to do now is to give enough quantum budget to this CPU, and remove it afterwards. 
-                int64_t quantum_for_deduction = cpu->env_ptr->quantum_required;
+                int64_t quantum_for_deduction = cpu->env_ptr->quantum_required / cpu->ipc;
                 // We need to sync immediately to get the quantum budget. 
                 if (is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
                     while (cpu->env_ptr->quantum_budget_and_generation.separated.quantum_budget <= quantum_for_deduction) {

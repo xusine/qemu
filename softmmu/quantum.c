@@ -6,6 +6,7 @@ uint64_t quantum_size = 0;
 static uint64_t quantum_enabled_lower_bound = 0;
 static uint64_t quantum_enabled_upper_bound = 0;
 uint64_t deplete_threshold = 0;
+uint64_t high_half_core_ipc = 1;
 
 void quantum_configure(QemuOpts *opts, Error **errp) {
     uint64_t quantum_size_tmp = qemu_opt_get_number(opts, "size", 0);
@@ -28,6 +29,9 @@ void quantum_configure(QemuOpts *opts, Error **errp) {
 
     // make it as a global value.
     quantum_size = quantum_size_tmp;
+
+    high_half_core_ipc = qemu_opt_get_number(opts, "high_half_core_ipc", 1);
+    
     assert(quantum_size < 0x7fffffff);
 }
 
