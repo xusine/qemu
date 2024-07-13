@@ -26,6 +26,8 @@ void cpu_timers_init(void);
  */
 #ifdef CONFIG_TCG
 extern int use_icount;
+extern uint64_t icount_switch_period;
+extern uint64_t depletion_iteration_count;
 #define icount_enabled() (use_icount)
 #else
 #define icount_enabled() 0
@@ -36,6 +38,8 @@ extern int use_icount;
  * cpus-tcg vCPU thread so the main-loop can see time has moved forward.
  */
 void icount_update(CPUState *cpu);
+
+void icount_increase(int64_t delta);
 
 /* get raw icount value */
 int64_t icount_get_raw(void);
