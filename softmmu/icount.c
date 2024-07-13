@@ -130,7 +130,7 @@ static int64_t icount_get_raw_locked(void)
             exit(1);
         }
         /* Take into account what has run */
-        icount_update_locked(cpu);
+        // icount_update_locked(cpu);
     }
     /* The read is protected by the seqlock, but needs atomic64 to avoid UB */
     return qatomic_read_i64(&timers_state.qemu_icount);
@@ -140,7 +140,7 @@ static int64_t icount_get_locked(void)
 {
     int64_t icount = icount_get_raw_locked();
     return qatomic_read_i64(&timers_state.qemu_icount_bias) +
-        icount_to_ns(icount);
+        icount_to_ns(icount) + timers_state.virtual_clock_snapshot;
 }
 
 int64_t icount_get_raw(void)
@@ -483,6 +483,8 @@ void icount_configure(QemuOpts *opts, Error **errp)
         icount_enable_precise();
         return;
     }
+
+    assert(false && "Auto icount is not supported in this QEMU.");
 
     icount_enable_adaptive();
 

@@ -275,9 +275,9 @@ static void *rr_cpu_thread_fn(void *arg)
                     icount_prepare_for_run(cpu, cpu_budget);
                     acc_icount_budget_per_core += cpu_budget;
                     iteration_count+= 1;
-                    if (iteration_count % (1024 * 1024) == 0) {
-                        printf("Iteration count: %lu, average icount budget per core: %lf\n", iteration_count, (double)acc_icount_budget_per_core / iteration_count);
-                    }
+                    // if (iteration_count % (1024 * 1024) == 0) {
+                    //     printf("Iteration count: %lu, average icount budget per core: %lf\n", iteration_count, (double)acc_icount_budget_per_core / iteration_count);
+                    // }
                 }
                 r = tcg_cpus_exec(cpu);
                 if (icount_enabled()) {

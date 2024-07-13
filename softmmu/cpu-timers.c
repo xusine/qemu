@@ -121,6 +121,12 @@ void cpu_enable_ticks(void)
             cyan_snapshot_cpu_clock_udpate_cb();
         }
 
+        if (icount_enabled()) {
+            // well, we have adjust the virtual_clock_snapshot time, so we should clean the current icount.
+            // by assigning offset, we cancel the value of the current icount. 
+            timers_state.qemu_icount_bias = - icount_to_ns(timers_state.qemu_icount);
+        }
+
         timers_state.cpu_ticks_offset -= cpu_get_host_ticks();
         // this value is not used when `cyan_cpu_clock_cb` is set and the tick is enabled.
         timers_state.cpu_clock_offset -= get_clock();
@@ -141,7 +147,16 @@ void cpu_disable_ticks(void)
                        &timers_state.vm_clock_lock);
     if (timers_state.cpu_ticks_enabled) {
         timers_state.cpu_ticks_offset += cpu_get_host_ticks();
-        timers_state.cpu_clock_offset = cpu_get_clock_locked();
+        
+        if (icount_enabled()) {
+            // record the current time calculated with icount.
+            int64_t current_system_time = icount_to_ns(timers_state.qemu_icount) + timers_state.qemu_icount_bias + timers_state.virtual_clock_snapshot;
+            timers_state.cpu_clock_offset = current_system_time; // record it to the snapshot.
+        } else {
+            // record the CPU time.
+            timers_state.cpu_clock_offset = cpu_get_clock_locked();
+        }
+
         // record the time of the guest system. 
         timers_state.cpu_ticks_enabled = 0;
     }
