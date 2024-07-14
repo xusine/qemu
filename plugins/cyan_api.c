@@ -34,9 +34,10 @@
 // All cyan callback functions
 qemu_plugin_cpu_clock_callback_t cyan_cpu_clock_cb = NULL;
 qemu_plugin_vcpu_branch_resolved_cb_t cyan_br_cb = NULL;
-qemu_plugin_savevm_cb_t cyan_savevm_cb = NULL; 
+qemu_plugin_snapshot_cb_t cyan_savevm_cb = NULL; 
 qemu_plugin_snapshot_cpu_clock_update_cb cyan_snapshot_cpu_clock_udpate_cb = NULL;
 qemu_plugin_quantum_deplete_cb_t quantum_deplete_cb = NULL;
+qemu_plugin_snapshot_cb_t cyan_loadvm_cb = NULL;
 
 
 void qemu_plugin_set_running_flag(bool is_running) {
@@ -196,11 +197,19 @@ uint64_t qemu_plugin_read_pc_vpn(void) {
   return (uint64_t)cpu->env_ptr->pc >> 12;
 }
 
-bool qemu_plugin_register_savevm_cb(qemu_plugin_savevm_cb_t cb) {
+bool qemu_plugin_register_savevm_cb(qemu_plugin_snapshot_cb_t cb) {
   if (cyan_savevm_cb) {
     return false;
   }
   cyan_savevm_cb = cb;
+  return true;
+}
+
+bool qemu_plugin_register_loadvm_cb(qemu_plugin_snapshot_cb_t cb) {
+  if (cyan_loadvm_cb) {
+    return false;
+  }
+  cyan_loadvm_cb = cb;
   return true;
 }
 

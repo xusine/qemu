@@ -57,6 +57,7 @@
 #include "block/snapshot.h"
 #include "qemu/cutils.h"
 #include "io/channel-buffer.h"
+#include "io/channel-command.h"
 #include "io/channel-file.h"
 #include "sysemu/replay.h"
 #include "sysemu/runstate.h"
@@ -2919,6 +2920,15 @@ int qemu_loadvm_approve_switchover(void)
     return migrate_send_rp_switchover_ack(mis);
 }
 
+static char *get_zstd(Error **errp)
+{
+    char *zstd = g_find_program_in_path("zstd");
+    if (!zstd)
+        error_setg(errp, "zstd not found in PATH");
+
+    return zstd;
+}
+
 bool save_snapshot(const char *name, bool overwrite, const char *vmstate,
                   bool has_devices, strList *devices, Error **errp)
 {
@@ -3003,11 +3013,31 @@ bool save_snapshot(const char *name, bool overwrite, const char *vmstate,
     }
 
     /* save the VM state */
-    f = qemu_fopen_bdrv(bs, 1);
+    char *zstd = get_zstd(errp);
+    if (!zstd)
+        goto the_end;
+
+    char snapshot_file_name[293];
+    snprintf(snapshot_file_name, sizeof(snapshot_file_name), "%s.zstd", sn->name);
+
+    const char *args[] = {zstd, "-f", "-q", "-T0", "-o", snapshot_file_name, NULL};
+
+    QIOChannelCommand *ioc = qio_channel_command_new_spawn(args, O_WRONLY, errp);
+    if (!ioc) {
+        error_setg(errp, "Could not create pipe for zstd");
+        goto the_end;
+    }
+
+    qio_channel_set_name(QIO_CHANNEL(ioc), "save_snapshot");
+
+    f = qemu_file_new_output(QIO_CHANNEL(ioc));
     if (!f) {
         error_setg(errp, "Could not open VM state file");
         goto the_end;
     }
+
+    g_free(zstd);
+
     ret = qemu_savevm_state(f, errp);
     vm_state_size = qemu_file_transferred_noflush(f);
     ret2 = qemu_fclose(f);
@@ -3018,7 +3048,6 @@ bool save_snapshot(const char *name, bool overwrite, const char *vmstate,
         ret = ret2;
         goto the_end;
     }
-
     // TODO: Add a plugin callback here to dump snapshot as well.
     if (cyan_savevm_cb) {
         cyan_savevm_cb(name);
@@ -3192,11 +3221,39 @@ bool load_snapshot(const char *name, const char *vmstate,
         goto err_drain;
     }
 
+    char snapshot_name[293];
+    snprintf(snapshot_name, sizeof(snapshot_name), "%s.zstd", sn.name);
+
     /* restore the VM state */
-    f = qemu_fopen_bdrv(bs_vm_state, 0);
-    if (!f) {
-        error_setg(errp, "Could not open VM state file");
-        goto err_drain;
+    if (g_file_test(snapshot_name, G_FILE_TEST_IS_REGULAR)) {
+        char *zstd = get_zstd(errp);
+        if (!zstd)
+            return false;
+
+        const char *args[] = {zstd, "-f", "-q", "-T0", "-d", "-c", snapshot_name, NULL};
+
+        QIOChannelCommand *ioc = qio_channel_command_new_spawn(args, O_RDONLY, errp);
+        if (!ioc) {
+            error_setg(errp, "Could not create pipe for zstd");
+            return false;
+        }
+
+        qio_channel_set_name(QIO_CHANNEL(ioc), "load_snapshot");
+
+        f = qemu_file_new_input(QIO_CHANNEL(ioc));
+        if (!f) {
+            error_setg(errp, "Could not open VM state file");
+            return false;
+        }
+
+        g_free(zstd);
+
+    } else {
+        f = qemu_fopen_bdrv(bs_vm_state, 0);
+        if (!f) {
+            error_setg(errp, "Could not open VM state file");
+            goto err_drain;
+        }
     }
 
     qemu_system_reset(SHUTDOWN_CAUSE_SNAPSHOT_LOAD);
@@ -3209,6 +3266,12 @@ bool load_snapshot(const char *name, const char *vmstate,
     aio_context_acquire(aio_context);
     ret = qemu_loadvm_state(f);
     migration_incoming_state_destroy();
+
+    // Ask the plugin to load the snapshot.
+    if (cyan_loadvm_cb) {
+        cyan_loadvm_cb(name);
+    }
+
     aio_context_release(aio_context);
 
     bdrv_drain_all_end();

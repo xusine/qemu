@@ -853,7 +853,7 @@ CYAN_API AARCH64_ONLY_API bool qemu_plugin_register_vcpu_branch_resolved_cb(qemu
 CYAN_API uint64_t qemu_plugin_read_pc_vpn(void);
 
 
-CYAN_API typedef void (*qemu_plugin_savevm_cb_t)(const char *);
+CYAN_API typedef void (*qemu_plugin_snapshot_cb_t)(const char *);
 
 /**
  * qemu_plugin_register_savevm_cb() - register a savevm callback
@@ -864,7 +864,18 @@ CYAN_API typedef void (*qemu_plugin_savevm_cb_t)(const char *);
  * 
  * returns true if the callback is registered successfully. Please note at currently at most one callback can be registered.
  */
-CYAN_API bool qemu_plugin_register_savevm_cb(qemu_plugin_savevm_cb_t cb);
+CYAN_API bool qemu_plugin_register_savevm_cb(qemu_plugin_snapshot_cb_t cb);
+
+
+/**
+ * qemu_plugin_register_loadvm_cb() - register a loadvm callback
+ * @cb: callback function
+ * 
+ * The @cb function is called after the VM state is loaded.
+ * 
+ * returns true if the callback is registered successfully. Please note at currently at most one callback can be registered.
+ */
+CYAN_API bool qemu_plugin_register_loadvm_cb(qemu_plugin_snapshot_cb_t cb);
 
 
 // This is a temporal solution to call the Rust code when a specific number of quantums is executed. 
