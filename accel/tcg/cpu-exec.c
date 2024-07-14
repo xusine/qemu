@@ -959,6 +959,11 @@ static inline void cpu_loop_exec_tb(CPUState *cpu, TranslationBlock *tb,
 #ifndef CONFIG_USER_ONLY
     /* Ensure global icount has gone forward */
     // icount_update(cpu);
+    // Because we remove the icount_update, the executed budget should be calculated here.
+    int64_t executed = (cpu->icount_budget -
+        (cpu_neg(cpu)->icount_decr.u16.low + cpu->icount_extra));
+    
+    cpu->icount_budget -= executed;
     /* Refill decrementer and continue execution.  */
     insns_left = MIN(0xffff, cpu->icount_budget);
     cpu_neg(cpu)->icount_decr.u16.low = insns_left;
