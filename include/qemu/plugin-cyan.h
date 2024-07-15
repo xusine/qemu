@@ -32,4 +32,7 @@ extern qemu_plugin_snapshot_cpu_clock_update_cb cyan_snapshot_cpu_clock_udpate_c
 // The callback for the quantum depetion.
 extern qemu_plugin_quantum_deplete_cb_t quantum_deplete_cb;
 
+// The two metadata for saving a snapshot request.
+extern qemu_plugin_event_loop_poll_cb_t cyan_el_pool_cb;
+
 #endif

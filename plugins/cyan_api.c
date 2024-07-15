@@ -30,6 +30,9 @@
 #include "exec/cpu-common.h"
 #include "qemu/plugin-cyan.h"
 #include "sysemu/quantum.h"
+#include "migration/snapshot.h"
+#include "qapi/error.h"
+
 
 // All cyan callback functions
 qemu_plugin_cpu_clock_callback_t cyan_cpu_clock_cb = NULL;
@@ -38,6 +41,10 @@ qemu_plugin_snapshot_cb_t cyan_savevm_cb = NULL;
 qemu_plugin_snapshot_cpu_clock_update_cb cyan_snapshot_cpu_clock_udpate_cb = NULL;
 qemu_plugin_quantum_deplete_cb_t quantum_deplete_cb = NULL;
 qemu_plugin_snapshot_cb_t cyan_loadvm_cb = NULL;
+qemu_plugin_event_loop_poll_cb_t cyan_el_pool_cb = NULL;
+
+char cyan_snapshot_name[256];
+bool cyan_snapshot_requested = false;
 
 
 void qemu_plugin_set_running_flag(bool is_running) {
@@ -253,5 +260,23 @@ uint64_t qemu_plugin_get_quantum_size(void) {
   
   return 0;
 }
+
+void qemu_plugin_savevm(const char *name) {
+  Error *err = NULL;
+  save_snapshot(name, true, NULL, false, NULL, &err);
+
+  if (err) {
+    error_reportf_err(err, "Error: ");
+  }
+}
+
+bool qemu_plugin_register_event_loop_poll_cb(qemu_plugin_event_loop_poll_cb_t cb) {
+  if (cyan_el_pool_cb) {
+    return false;
+  }
+  cyan_el_pool_cb = cb;
+  return true;
+}
+
 
 #endif

@@ -63,4 +63,6 @@
   qemu_plugin_register_quantum_deplete_cb;
   qemu_plugin_read_local_virtual_time_base;
   qemu_plugin_get_quantum_size;
+  qemu_plugin_savevm;
+  qemu_plugin_register_event_loop_poll_cb;
 };

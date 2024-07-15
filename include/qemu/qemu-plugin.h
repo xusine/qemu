@@ -22,15 +22,15 @@
  *   https://gcc.gnu.org/wiki/Visibility
  */
 #if defined _WIN32 || defined __CYGWIN__
-  #ifdef BUILDING_DLL
-    #define QEMU_PLUGIN_EXPORT __declspec(dllexport)
-  #else
-    #define QEMU_PLUGIN_EXPORT __declspec(dllimport)
-  #endif
-  #define QEMU_PLUGIN_LOCAL
+#ifdef BUILDING_DLL
+#define QEMU_PLUGIN_EXPORT __declspec(dllexport)
 #else
-  #define QEMU_PLUGIN_EXPORT __attribute__((visibility("default")))
-  #define QEMU_PLUGIN_LOCAL  __attribute__((visibility("hidden")))
+#define QEMU_PLUGIN_EXPORT __declspec(dllimport)
+#endif
+#define QEMU_PLUGIN_LOCAL
+#else
+#define QEMU_PLUGIN_EXPORT __attribute__((visibility("default")))
+#define QEMU_PLUGIN_LOCAL __attribute__((visibility("hidden")))
 #endif
 
 /**
@@ -64,24 +64,24 @@ extern QEMU_PLUGIN_EXPORT int qemu_plugin_version;
  * architectures or when under full system emulation.
  */
 typedef struct qemu_info_t {
-    /** @target_name: string describing architecture */
-    const char *target_name;
-    /** @version: minimum and current plugin API level */
+  /** @target_name: string describing architecture */
+  const char *target_name;
+  /** @version: minimum and current plugin API level */
+  struct {
+    int min;
+    int cur;
+  } version;
+  /** @system_emulation: is this a full system emulation? */
+  bool system_emulation;
+  union {
+    /** @system: information relevant to system emulation */
     struct {
-        int min;
-        int cur;
-    } version;
-    /** @system_emulation: is this a full system emulation? */
-    bool system_emulation;
-    union {
-        /** @system: information relevant to system emulation */
-        struct {
-            /** @system.smp_vcpus: initial number of vCPUs */
-            int smp_vcpus;
-            /** @system.max_vcpus: maximum possible number of vCPUs */
-            int max_vcpus;
-        } system;
-    };
+      /** @system.smp_vcpus: initial number of vCPUs */
+      int smp_vcpus;
+      /** @system.max_vcpus: maximum possible number of vCPUs */
+      int max_vcpus;
+    } system;
+  };
 } qemu_info_t;
 
 /**
@@ -102,8 +102,8 @@ typedef struct qemu_info_t {
  * Return: 0 on successful loading, !0 for an error.
  */
 QEMU_PLUGIN_EXPORT int qemu_plugin_install(qemu_plugin_id_t id,
-                                           const qemu_info_t *info,
-                                           int argc, char **argv);
+                                           const qemu_info_t *info, int argc,
+                                           char **argv);
 
 /**
  * typedef qemu_plugin_simple_cb_t - simple callback
@@ -224,15 +224,15 @@ struct qemu_plugin_insn;
  * register state.
  */
 enum qemu_plugin_cb_flags {
-    QEMU_PLUGIN_CB_NO_REGS,
-    QEMU_PLUGIN_CB_R_REGS,
-    QEMU_PLUGIN_CB_RW_REGS,
+  QEMU_PLUGIN_CB_NO_REGS,
+  QEMU_PLUGIN_CB_R_REGS,
+  QEMU_PLUGIN_CB_RW_REGS,
 };
 
 enum qemu_plugin_mem_rw {
-    QEMU_PLUGIN_MEM_R = 1,
-    QEMU_PLUGIN_MEM_W,
-    QEMU_PLUGIN_MEM_RW,
+  QEMU_PLUGIN_MEM_R = 1,
+  QEMU_PLUGIN_MEM_W,
+  QEMU_PLUGIN_MEM_RW,
 };
 
 /**
@@ -281,7 +281,7 @@ void qemu_plugin_register_vcpu_tb_exec_cb(struct qemu_plugin_tb *tb,
  */
 
 enum qemu_plugin_op {
-    QEMU_PLUGIN_INLINE_ADD_U64,
+  QEMU_PLUGIN_INLINE_ADD_U64,
 };
 
 /**
@@ -299,8 +299,8 @@ enum qemu_plugin_op {
  * you will get inexact results.
  */
 void qemu_plugin_register_vcpu_tb_exec_inline(struct qemu_plugin_tb *tb,
-                                              enum qemu_plugin_op op,
-                                              void *ptr, uint64_t imm);
+                                              enum qemu_plugin_op op, void *ptr,
+                                              uint64_t imm);
 
 /**
  * qemu_plugin_register_vcpu_insn_exec_cb() - register insn execution cb
@@ -490,10 +490,9 @@ const char *qemu_plugin_hwaddr_device_name(const struct qemu_plugin_hwaddr *h);
  * @vaddr: the virtual address of the transaction
  * @userdata: any user data attached to the callback
  */
-typedef void (*qemu_plugin_vcpu_mem_cb_t) (unsigned int vcpu_index,
-                                           qemu_plugin_meminfo_t info,
-                                           uint64_t vaddr,
-                                           void *userdata);
+typedef void (*qemu_plugin_vcpu_mem_cb_t)(unsigned int vcpu_index,
+                                          qemu_plugin_meminfo_t info,
+                                          uint64_t vaddr, void *userdata);
 
 /**
  * qemu_plugin_register_vcpu_mem_cb() - register memory access callback
@@ -522,7 +521,8 @@ void qemu_plugin_register_vcpu_mem_cb(struct qemu_plugin_insn *insn,
                                       void *userdata);
 
 /**
- * qemu_plugin_register_vcpu_mem_inline() - register an inline op to any memory access
+ * qemu_plugin_register_vcpu_mem_inline() - register an inline op to any memory
+ * access
  * @insn: handle for instruction to instrument
  * @rw: apply to reads, writes or both
  * @op: the op, of type qemu_plugin_op
@@ -538,25 +538,20 @@ void qemu_plugin_register_vcpu_mem_inline(struct qemu_plugin_insn *insn,
                                           enum qemu_plugin_op op, void *ptr,
                                           uint64_t imm);
 
-
-
-typedef void
-(*qemu_plugin_vcpu_syscall_cb_t)(qemu_plugin_id_t id, unsigned int vcpu_index,
-                                 int64_t num, uint64_t a1, uint64_t a2,
-                                 uint64_t a3, uint64_t a4, uint64_t a5,
-                                 uint64_t a6, uint64_t a7, uint64_t a8);
+typedef void (*qemu_plugin_vcpu_syscall_cb_t)(
+    qemu_plugin_id_t id, unsigned int vcpu_index, int64_t num, uint64_t a1,
+    uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5, uint64_t a6,
+    uint64_t a7, uint64_t a8);
 
 void qemu_plugin_register_vcpu_syscall_cb(qemu_plugin_id_t id,
                                           qemu_plugin_vcpu_syscall_cb_t cb);
 
-typedef void
-(*qemu_plugin_vcpu_syscall_ret_cb_t)(qemu_plugin_id_t id, unsigned int vcpu_idx,
-                                     int64_t num, int64_t ret);
+typedef void (*qemu_plugin_vcpu_syscall_ret_cb_t)(qemu_plugin_id_t id,
+                                                  unsigned int vcpu_idx,
+                                                  int64_t num, int64_t ret);
 
-void
-qemu_plugin_register_vcpu_syscall_ret_cb(qemu_plugin_id_t id,
-                                         qemu_plugin_vcpu_syscall_ret_cb_t cb);
-
+void qemu_plugin_register_vcpu_syscall_ret_cb(
+    qemu_plugin_id_t id, qemu_plugin_vcpu_syscall_ret_cb_t cb);
 
 /**
  * qemu_plugin_insn_disas() - return disassembly string for instruction
@@ -670,152 +665,169 @@ uint64_t qemu_plugin_entry_code(void);
 #define AARCH64_ONLY_API
 
 /**
- * qemu_plugin_set_running_flag() - setting the "running" flag of the current CPU
- * 
+ * qemu_plugin_set_running_flag() - setting the "running" flag of the current
+ * CPU
+ *
  * @is_running: The value of the flag.
- * 
- * Some synchronization mechanism (e.g., exclusive execution) checks 
- * this flag to make sure all CPUs are not executing instructions and 
+ *
+ * Some synchronization mechanism (e.g., exclusive execution) checks
+ * this flag to make sure all CPUs are not executing instructions and
  * wait for all CPUs to be idle.
- *  
- * In you plugin are using locks and synchronization which can block 
- * execution, you should set the running flag to false before being 
+ *
+ * In you plugin are using locks and synchronization which can block
+ * execution, you should set the running flag to false before being
  * blocked to avoid deadlocks.
  */
 CYAN_API void qemu_plugin_set_running_flag(bool is_running);
 
-
 /**
- * qemu_plugin_is_current_cpu_can_run() - check whether the current CPU can 
- * still continue to run instructions, i.e., not stopped by other threads like quitting.
- * 
+ * qemu_plugin_is_current_cpu_can_run() - check whether the current CPU can
+ * still continue to run instructions, i.e., not stopped by other threads like
+ * quitting.
+ *
  * Returns true if the current cpu can still run.
- * 
+ *
  * This function is a wrapper of function `cpu_can_run`.
  */
 CYAN_API bool qemu_plugin_is_current_cpu_can_run(void);
 
-CYAN_API typedef int64_t (*qemu_plugin_cpu_clock_callback_t) (void);
+CYAN_API typedef int64_t (*qemu_plugin_cpu_clock_callback_t)(void);
 
 /**
- * qemu_plugin_register_cpu_clock_cb() - register the method for CPU to calculate the time.
- * 
+ * qemu_plugin_register_cpu_clock_cb() - register the method for CPU to
+ * calculate the time.
+ *
  * @callback: The callback to provide cpu clock.
- * 
- * Returns true if the registration is successful. Please note that only one callback can be registered.
- * 
- * This function overrides the internal QEMU function `cpu_get_clock_locked`, and it cannot be used together with the icount mode.
-*/
-CYAN_API bool qemu_plugin_register_cpu_clock_cb(qemu_plugin_cpu_clock_callback_t callback);
-
+ *
+ * Returns true if the registration is successful. Please note that only one
+ * callback can be registered.
+ *
+ * This function overrides the internal QEMU function `cpu_get_clock_locked`,
+ * and it cannot be used together with the icount mode.
+ */
+CYAN_API bool
+qemu_plugin_register_cpu_clock_cb(qemu_plugin_cpu_clock_callback_t callback);
 
 /**
- * qemu_plugin_get_cpu_clock() - return the CPU clock time calculated by the realtime elapsing.
- * 
+ * qemu_plugin_get_cpu_clock() - return the CPU clock time calculated by the
+ * realtime elapsing.
+ *
  * Useful when defining the new cpu clock function.
  */
 CYAN_API int64_t qemu_plugin_get_cpu_clock(void);
 
-
 /**
- * qemu_plugin_get_snapshot_cpu_clock() - return the CPU clock when the snapshot is taken. Otherwise, it is zero.
- * 
+ * qemu_plugin_get_snapshot_cpu_clock() - return the CPU clock when the snapshot
+ * is taken. Otherwise, it is zero.
+ *
  * Useful when defining the new cpu clock function.
  */
 CYAN_API int64_t qemu_plugin_get_snapshot_cpu_clock(void);
 
-
-CYAN_API typedef void (*qemu_plugin_snapshot_cpu_clock_update_cb) (void);
+CYAN_API typedef void (*qemu_plugin_snapshot_cpu_clock_update_cb)(void);
 
 /**
- * qemu_plugin_register_snapshot_cpu_clock_update_cb() - register the callback for updating the snapshot time.
- * 
+ * qemu_plugin_register_snapshot_cpu_clock_update_cb() - register the callback
+ * for updating the snapshot time.
+ *
  * @callback: The callback to reset the VM clock.
- * 
- * Returns true if the registration is successful. Please note that only one callback can be registered.
-*/
+ *
+ * Returns true if the registration is successful. Please note that only one
+ * callback can be registered.
+ */
 
-CYAN_API bool qemu_plugin_register_snapshot_cpu_clock_update_cb(qemu_plugin_snapshot_cpu_clock_update_cb callback);
+CYAN_API bool qemu_plugin_register_snapshot_cpu_clock_update_cb(
+    qemu_plugin_snapshot_cpu_clock_update_cb callback);
 
 /**
  * qemu_plugin_cpu_is_tick_enabled() - return whether the CPU tick is enabled.
- * 
+ *
  * Useful when defining the new virtual time function.
  */
 
 CYAN_API bool qemu_plugin_cpu_is_tick_enabled(void);
 
 /**
- * qemu_plugin_read_cpu_integer_register - returns the value of the given integer register.
- * 
- * This function can be only called from threads that run a vCPU. Otherwise, it will trigger assertion failure.
+ * qemu_plugin_read_cpu_integer_register - returns the value of the given
+ * integer register.
+ *
+ * This function can be only called from threads that run a vCPU. Otherwise, it
+ * will trigger assertion failure.
  */
 
-CYAN_API AARCH64_ONLY_API uint64_t qemu_plugin_read_cpu_integer_register(int reg_index);
-
-
+CYAN_API AARCH64_ONLY_API uint64_t
+qemu_plugin_read_cpu_integer_register(int reg_index);
 
 /**
  * qemu_plugin_read_ttbr_el1 - returns the value of the ttbr_el1.
- * 
- * @which_ttbr: 0 for ttbr0_el1, 1 for ttbr1_el1. Other values will trigger assertion failure.
- * 
- * This function can be only called from threads that run a vCPU. Otherwise, it will trigger assertion failure.
+ *
+ * @which_ttbr: 0 for ttbr0_el1, 1 for ttbr1_el1. Other values will trigger
+ * assertion failure.
+ *
+ * This function can be only called from threads that run a vCPU. Otherwise, it
+ * will trigger assertion failure.
  */
 CYAN_API AARCH64_ONLY_API uint64_t qemu_plugin_read_ttbr_el1(int which_ttbr);
 
-
-
 /**
  * qemu_plugin_read_tcr_el1 - returns the value of tcr_el1.
- * 
- * This function can be only called from threads that run a vCPU. Otherwise, it will trigger assertion failure.
+ *
+ * This function can be only called from threads that run a vCPU. Otherwise, it
+ * will trigger assertion failure.
  */
 
 CYAN_API AARCH64_ONLY_API uint64_t qemu_plugin_read_tcr_el1(void);
 
-
 /**
- * qemu_plugin_hwaddr_translate_walk_trace - returns the trace of walking the page table to get the specific translation.
- * 
- * The returned array has 4 elements. Every element is the hardware address of a specific page table entry.
- * For huge pages or translation error, you will see -1 in the array ahead of time. 
- * 
- * This function can be only called from threads that run a vCPU. Otherwise, it will return NULL.
- * 
- * The function reads the recorded trace in the TLB entry. There is a better way to optimize the storage.
+ * qemu_plugin_hwaddr_translate_walk_trace - returns the trace of walking the
+ * page table to get the specific translation.
+ *
+ * The returned array has 4 elements. Every element is the hardware address of a
+ * specific page table entry. For huge pages or translation error, you will see
+ * -1 in the array ahead of time.
+ *
+ * This function can be only called from threads that run a vCPU. Otherwise, it
+ * will return NULL.
+ *
+ * The function reads the recorded trace in the TLB entry. There is a better way
+ * to optimize the storage.
  *
  */
-CYAN_API AARCH64_ONLY_API const uint64_t *qemu_plugin_hwaddr_translate_walk_trace(const struct qemu_plugin_hwaddr *hwaddr);
-
+CYAN_API AARCH64_ONLY_API const uint64_t *
+qemu_plugin_hwaddr_translate_walk_trace(
+    const struct qemu_plugin_hwaddr *hwaddr);
 
 /**
- * qemu_plugin_read_physical_memory - returns the value of the given physical memory address.
- * 
- * This function calls cpu_physical_memory_rw to read the physical memory. 
- * 
+ * qemu_plugin_read_physical_memory - returns the value of the given physical
+ * memory address.
+ *
+ * This function calls cpu_physical_memory_rw to read the physical memory.
+ *
  * This function will not trigger memory access plugin.
  */
 
-CYAN_API void qemu_plugin_read_physical_memory(uint64_t physical_address, uint64_t size, void *buf);
-
+CYAN_API void qemu_plugin_read_physical_memory(uint64_t physical_address,
+                                               uint64_t size, void *buf);
 
 /**
- * qemu_plugin_write_physical_memory - write the value to the given physical memory address.
- * 
+ * qemu_plugin_write_physical_memory - write the value to the given physical
+ * memory address.
+ *
  * This function calls the cpu_physical_memory_rw to write the physical memory.
- * 
+ *
  * This function will not trigger memory access plugin.
  */
 
-CYAN_API void qemu_plugin_write_physical_memory(uint64_t physical_address, uint64_t size, const void *buf);
+CYAN_API void qemu_plugin_write_physical_memory(uint64_t physical_address,
+                                                uint64_t size, const void *buf);
 
 /**
  * typedef qemu_plugin_vcpu_branch_resolved_cb_t - vcpu callback
  * @vcpu_index: the current vcpu context
  * @pc: the PC of the current instruction.
  * @target: the target address of the branch.
- * @hint_flags: the hint flags of the branch, including the following possible values:
+ * @hint_flags: the hint flags of the branch, including the following possible
+ * values:
  *    - 0x0: conditional branch, taken
  *    - 0x1: conditional branch, not taken
  *    - 0x2: function call
@@ -824,79 +836,114 @@ CYAN_API void qemu_plugin_write_physical_memory(uint64_t physical_address, uint6
  * was registered.
  */
 
-
-CYAN_API AARCH64_ONLY_API typedef void (*qemu_plugin_vcpu_branch_resolved_cb_t)(unsigned int vcpu_index, uint64_t pc, uint64_t target, uint32_t hint_flags);
+CYAN_API AARCH64_ONLY_API typedef void (*qemu_plugin_vcpu_branch_resolved_cb_t)(
+    unsigned int vcpu_index, uint64_t pc, uint64_t target, uint32_t hint_flags);
 
 /**
- * qemu_plugin_register_vcpu_branch_resolved_cb() - register a vCPU branch resolved callback
+ * qemu_plugin_register_vcpu_branch_resolved_cb() - register a vCPU branch
+ * resolved callback
  * @cb: callback function
  *
  * The @cb function is called every time a branch is resolved.
- * 
- * returns true if the callback is registered successfully. Please note at currently at most one callback can be registered.
+ *
+ * returns true if the callback is registered successfully. Please note at
+ * currently at most one callback can be registered.
  *
  */
-CYAN_API AARCH64_ONLY_API bool qemu_plugin_register_vcpu_branch_resolved_cb(qemu_plugin_vcpu_branch_resolved_cb_t cb);
+CYAN_API AARCH64_ONLY_API bool qemu_plugin_register_vcpu_branch_resolved_cb(
+    qemu_plugin_vcpu_branch_resolved_cb_t cb);
 
 /**
- * qemu_plugin_read_pc_vpn() - return the 4KB virtual page number of the current PC. 
- * 
- * The reason why we return VPN is because QEMU does not frequent update the PC in its CPUArchState. 
- * I still don't know why. It may be related to the performance impact but I don't know where I should see the update logic.
- * However, the PC should be updated when the PC is pointing to a different page. In this case, no chaining or patching of TB is allowed. 
- * 
- * This function can be only called from threads that run a vCPU. Otherwise, it will trigger assertion failure.
- * 
- * To get the full PC, you need to also store the PC's offset as the parameter when registering the callback. 
- * 
+ * qemu_plugin_read_pc_vpn() - return the 4KB virtual page number of the current
+ * PC.
+ *
+ * The reason why we return VPN is because QEMU does not frequent update the PC
+ * in its CPUArchState. I still don't know why. It may be related to the
+ * performance impact but I don't know where I should see the update logic.
+ * However, the PC should be updated when the PC is pointing to a different
+ * page. In this case, no chaining or patching of TB is allowed.
+ *
+ * This function can be only called from threads that run a vCPU. Otherwise, it
+ * will trigger assertion failure.
+ *
+ * To get the full PC, you need to also store the PC's offset as the parameter
+ * when registering the callback.
+ *
  */
 CYAN_API uint64_t qemu_plugin_read_pc_vpn(void);
-
 
 CYAN_API typedef void (*qemu_plugin_snapshot_cb_t)(const char *);
 
 /**
  * qemu_plugin_register_savevm_cb() - register a savevm callback
  * @cb: callback function
- * 
- * The @cb function is called after the VM state is saved. 
- * The exact time of the callback is after the VM state is saved to the qcow2 file and before the VM is resumed.
- * 
- * returns true if the callback is registered successfully. Please note at currently at most one callback can be registered.
+ *
+ * The @cb function is called after the VM state is saved.
+ * The exact time of the callback is after the VM state is saved to the qcow2
+ * file and before the VM is resumed.
+ *
+ * returns true if the callback is registered successfully. Please note at
+ * currently at most one callback can be registered.
  */
 CYAN_API bool qemu_plugin_register_savevm_cb(qemu_plugin_snapshot_cb_t cb);
-
 
 /**
  * qemu_plugin_register_loadvm_cb() - register a loadvm callback
  * @cb: callback function
- * 
+ *
  * The @cb function is called after the VM state is loaded.
- * 
- * returns true if the callback is registered successfully. Please note at currently at most one callback can be registered.
+ *
+ * returns true if the callback is registered successfully. Please note at
+ * currently at most one callback can be registered.
  */
 CYAN_API bool qemu_plugin_register_loadvm_cb(qemu_plugin_snapshot_cb_t cb);
 
-
-// This is a temporal solution to call the Rust code when a specific number of quantums is executed. 
+// This is a temporal solution to call the Rust code when a specific number of
+// quantums is executed.
 CYAN_API typedef void (*qemu_plugin_quantum_deplete_cb_t)(void);
 
-CYAN_API bool qemu_plugin_register_quantum_deplete_cb(qemu_plugin_quantum_deplete_cb_t cb);
+CYAN_API bool
+qemu_plugin_register_quantum_deplete_cb(qemu_plugin_quantum_deplete_cb_t cb);
 
 /**
- * qemu_plugin_read_vts_base - return the base virtual time calculated from the quantum budget and quantum generation. 
- * 
- * The return value does not contain the current translation block. 
+ * qemu_plugin_read_vts_base - return the base virtual time calculated from the
+ * quantum budget and quantum generation.
+ *
+ * The return value does not contain the current translation block.
  * You need to add the bias by yourself to get the accurate virtual timestamp.
- * 
+ *
  */
 CYAN_API uint64_t qemu_plugin_read_local_virtual_time_base(void);
 
 /**
  * qemu_plugin_get_quantum_size - return the quantum size.
- * 
- * Return 0 if the quantum is not enabled. 
+ *
+ * Return 0 if the quantum is not enabled.
  */
 CYAN_API uint64_t qemu_plugin_get_quantum_size(void);
+
+/**
+ * qemu_plugin_savevm - save the VM state.
+ * @name: the name of the snapshot.
+ *
+ * This function is a wrapper of the QEMU function `save_snapshot`.
+ * It prints the error directly to the console.
+ */
+CYAN_API void qemu_plugin_savevm(const char *name);
+
+CYAN_API typedef void (*qemu_plugin_event_loop_poll_cb_t)(void);
+
+/**
+ * qemu_plugin_register_event_loop_poll_cb() - register a callback to poll the
+ *
+ * @cb: function is called every time the event loop polls.
+ *
+ * returns true if the callback is registered successfully.
+ *
+ * Please note at currently at most one callback can be registered.
+ */
+CYAN_API bool
+qemu_plugin_register_event_loop_poll_cb(qemu_plugin_event_loop_poll_cb_t cb);
+
 
 #endif /* QEMU_QEMU_PLUGIN_H */
