@@ -3050,7 +3050,7 @@ bool save_snapshot(const char *name, bool overwrite, const char *vmstate,
     }
     // TODO: Add a plugin callback here to dump snapshot as well.
     if (cyan_savevm_cb) {
-        cyan_savevm_cb(name);
+        cyan_savevm_cb(sn->name);
     }
 
 
@@ -3269,7 +3269,7 @@ bool load_snapshot(const char *name, const char *vmstate,
 
     // Ask the plugin to load the snapshot.
     if (cyan_loadvm_cb) {
-        cyan_loadvm_cb(name);
+        cyan_loadvm_cb(sn.name);
     }
 
     aio_context_release(aio_context);
