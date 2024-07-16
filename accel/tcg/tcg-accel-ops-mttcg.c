@@ -353,9 +353,6 @@ static void *mttcg_cpu_thread_fn(void *arg)
         qemu_wait_io_event(cpu, not_running_yet, &current_quantum_generation);
 
         // Activate the plugin and see if it can run any delayed tasks.
-        if (cyan_el_pool_cb) {
-            cyan_el_pool_cb();
-        }
         // if (statistic_head_counter < RECORD_SIZE + SKIP_SIZE && statistic_head_counter > SKIP_SIZE) {
         //     statistics[statistic_head_counter - SKIP_SIZE].idle_time += (get_current_timestamp_ns() - wait_start_ts); // increase the idle time.
         // }

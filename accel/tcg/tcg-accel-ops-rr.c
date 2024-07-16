@@ -323,10 +323,6 @@ static void *rr_cpu_thread_fn(void *arg)
         rr_wait_io_event();
 
         // Activate the plugn system.
-        if (cyan_el_pool_cb) {
-            cyan_el_pool_cb();
-        }
-
         rr_deal_with_unplugged_cpus();
     }
 
