@@ -945,5 +945,24 @@ CYAN_API typedef void (*qemu_plugin_event_loop_poll_cb_t)(void);
 CYAN_API bool
 qemu_plugin_register_event_loop_poll_cb(qemu_plugin_event_loop_poll_cb_t cb);
 
+CYAN_API typedef void (*qemu_plugin_icount_periodic_checking_cb_t) (void);
+
+/**
+ * qemu_plugin_register_icount_periodic_checking_cb() - register a callback for
+ * checking periodically when icount is increased to a specific value.
+ * 
+ * @cb: function is called when the icount is increased to a specific value.
+ * 
+ * returns true if the callback is registered successfully.
+ * 
+ * TODO: This callback is a dirty hack. It is because we need to know the userspace
+ * instruction to report statistics and we cannot get the userspace instruction
+ * inside QEMU. It has to come from the plugin. 
+ * 
+ * This part should be refactored afterwards.
+ */
+CYAN_API bool
+qemu_plugin_register_icount_periodic_checking_cb(qemu_plugin_icount_periodic_checking_cb_t cb);
+
 
 #endif /* QEMU_QEMU_PLUGIN_H */

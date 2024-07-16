@@ -42,6 +42,7 @@ qemu_plugin_snapshot_cpu_clock_update_cb cyan_snapshot_cpu_clock_udpate_cb = NUL
 qemu_plugin_quantum_deplete_cb_t quantum_deplete_cb = NULL;
 qemu_plugin_snapshot_cb_t cyan_loadvm_cb = NULL;
 qemu_plugin_event_loop_poll_cb_t cyan_el_pool_cb = NULL;
+qemu_plugin_icount_periodic_checking_cb_t cyan_icount_periodic_checking_cb = NULL;
 
 char cyan_snapshot_name[256];
 bool cyan_snapshot_requested = false;
@@ -254,10 +255,9 @@ uint64_t qemu_plugin_read_local_virtual_time_base(void) {
 }
 
 uint64_t qemu_plugin_get_quantum_size(void) {
-  if (quantum_enabled()) {
-    return quantum_size;
-  }
-  
+  if(quantum_enabled()) return quantum_size;
+
+  printf("Warning: quantum is not enabled, return 0\n");
   return 0;
 }
 
@@ -275,6 +275,18 @@ bool qemu_plugin_register_event_loop_poll_cb(qemu_plugin_event_loop_poll_cb_t cb
     return false;
   }
   cyan_el_pool_cb = cb;
+  return true;
+}
+
+bool qemu_plugin_register_icount_periodic_checking_cb(qemu_plugin_icount_periodic_checking_cb_t cb) {
+  assert(icount_enabled());
+  assert(icount_checking_period != 0);
+
+  if (cyan_icount_periodic_checking_cb) {
+    return false;
+  }
+
+  cyan_icount_periodic_checking_cb = cb;
   return true;
 }
 

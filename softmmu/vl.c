@@ -451,7 +451,7 @@ static QemuOptsList qemu_icount_opts = {
             .name = "q",
             .type = QEMU_OPT_NUMBER
         }, {
-            .name = "d",
+            .name = "check_period",
             .type = QEMU_OPT_NUMBER
         },
         { /* end of list */ }

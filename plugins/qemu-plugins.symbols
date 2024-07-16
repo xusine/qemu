@@ -65,4 +65,5 @@
   qemu_plugin_get_quantum_size;
   qemu_plugin_savevm;
   qemu_plugin_register_event_loop_poll_cb;
+  qemu_plugin_register_icount_periodic_checking_cb;
 };

@@ -57,7 +57,7 @@ static bool icount_sleep = true;
  */
 int use_icount;
 uint64_t icount_switch_period;
-uint64_t depletion_iteration_count;
+uint64_t icount_checking_period;
 
 static void icount_enable_precise(void)
 {
@@ -439,9 +439,9 @@ void icount_configure(QemuOpts *opts, Error **errp)
     const char *option = qemu_opt_get(opts, "shift");
     bool sleep = qemu_opt_get_bool(opts, "sleep", true);
     bool align = qemu_opt_get_bool(opts, "align", false);
-    uint64_t period = qemu_opt_get_number(opts, "q", 0);
+    uint64_t period = qemu_opt_get_number(opts, "q", 1000);
     icount_switch_period = period;
-    depletion_iteration_count = qemu_opt_get_number(opts, "d", 0);
+    icount_checking_period = qemu_opt_get_number(opts, "check_period", 0);
     long time_shift = -1;
 
     if (!option) {

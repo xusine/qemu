@@ -27,7 +27,7 @@ void cpu_timers_init(void);
 #ifdef CONFIG_TCG
 extern int use_icount;
 extern uint64_t icount_switch_period;
-extern uint64_t depletion_iteration_count;
+extern uint64_t icount_checking_period;
 #define icount_enabled() (use_icount)
 #else
 #define icount_enabled() 0

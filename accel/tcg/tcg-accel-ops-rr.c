@@ -215,10 +215,8 @@ static void *rr_cpu_thread_fn(void *arg)
     /* process any pending work */
     cpu->exit_request = 1;
 
-    uint64_t iteration_count = 0;
-    uint64_t acc_icount_budget_per_core = 0;
-
     uint64_t all_cores_round_robin_count = 0;
+    uint64_t next_check_threshold = icount_checking_period;
 
     while (1) {
         /* Only used for icount_enabled() */
@@ -250,9 +248,9 @@ static void *rr_cpu_thread_fn(void *arg)
 
         if (!cpu) {
             all_cores_round_robin_count += 1;
-            if (all_cores_round_robin_count > depletion_iteration_count) {
-                printf("All cores round robin count: %lu\n", all_cores_round_robin_count);
-                exit(0);
+            if (icount_checking_period != 0 && all_cores_round_robin_count > next_check_threshold) {
+                if (cyan_icount_periodic_checking_cb) cyan_icount_periodic_checking_cb();
+                next_check_threshold += icount_checking_period;
             }
             // The time is increased here to avoid problem.
             icount_increase(cpu_budget);
@@ -274,11 +272,6 @@ static void *rr_cpu_thread_fn(void *arg)
                 qemu_mutex_unlock_iothread();
                 if (icount_enabled()) {
                     icount_prepare_for_run(cpu, cpu_budget);
-                    acc_icount_budget_per_core += cpu_budget;
-                    iteration_count+= 1;
-                    // if (iteration_count % (1024 * 1024) == 0) {
-                    //     printf("Iteration count: %lu, average icount budget per core: %lf\n", iteration_count, (double)acc_icount_budget_per_core / iteration_count);
-                    // }
                 }
                 r = tcg_cpus_exec(cpu);
                 if (icount_enabled()) {
