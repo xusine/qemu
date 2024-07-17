@@ -964,5 +964,12 @@ CYAN_API typedef void (*qemu_plugin_icount_periodic_checking_cb_t) (void);
 CYAN_API bool
 qemu_plugin_register_icount_periodic_checking_cb(qemu_plugin_icount_periodic_checking_cb_t cb);
 
+/**
+ * qemu_plugin_is_icount_mode - return whether the icount mode is enabled.
+ * 
+ * Returns true if the icount mode is enabled.
+ */
+CYAN_API bool qemu_plugin_is_icount_mode(void);
+
 
 #endif /* QEMU_QEMU_PLUGIN_H */

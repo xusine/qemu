@@ -290,5 +290,9 @@ bool qemu_plugin_register_icount_periodic_checking_cb(qemu_plugin_icount_periodi
   return true;
 }
 
+bool qemu_plugin_is_icount_mode(void) {
+  return icount_enabled();
+}
+
 
 #endif
