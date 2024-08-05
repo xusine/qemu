@@ -263,7 +263,7 @@ uint64_t qemu_plugin_get_quantum_size(void) {
 
 void qemu_plugin_savevm(const char *name) {
   Error *err = NULL;
-  save_snapshot(name, true, NULL, false, NULL, &err);
+  save_snapshot_zstd(name, true, NULL, false, NULL, &err);
 
   if (err) {
     error_reportf_err(err, "Error: ");

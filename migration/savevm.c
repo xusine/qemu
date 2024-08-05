@@ -3013,6 +3013,141 @@ bool save_snapshot(const char *name, bool overwrite, const char *vmstate,
     }
 
     /* save the VM state */
+    f = qemu_fopen_bdrv(bs, 1);
+    if (!f) {
+        error_setg(errp, "Could not open VM state file");
+        goto the_end;
+    }
+    ret = qemu_savevm_state(f, errp);
+    vm_state_size = qemu_file_transferred_noflush(f);
+    ret2 = qemu_fclose(f);
+    if (ret < 0) {
+        goto the_end;
+    }
+    if (ret2 < 0) {
+        ret = ret2;
+        goto the_end;
+    }
+
+    // TODO: Add a plugin callback here to dump snapshot as well.
+    if (cyan_savevm_cb) {
+        cyan_savevm_cb(sn->name);
+    }
+
+    /* The bdrv_all_create_snapshot() call that follows acquires the AioContext
+     * for itself.  BDRV_POLL_WHILE() does not support nested locking because
+     * it only releases the lock once.  Therefore synchronous I/O will deadlock
+     * unless we release the AioContext before bdrv_all_create_snapshot().
+     */
+    aio_context_release(aio_context);
+    aio_context = NULL;
+
+    ret = bdrv_all_create_snapshot(sn, bs, vm_state_size,
+                                   has_devices, devices, errp);
+    if (ret < 0) {
+        bdrv_all_delete_snapshot(sn->name, has_devices, devices, NULL);
+        goto the_end;
+    }
+
+    ret = 0;
+
+ the_end:
+    if (aio_context) {
+        aio_context_release(aio_context);
+    }
+
+    bdrv_drain_all_end();
+
+    if (saved_vm_running) {
+        vm_start();
+    }
+    return ret == 0;
+}
+
+bool save_snapshot_zstd(const char *name, bool overwrite, const char *vmstate,
+                  bool has_devices, strList *devices, Error **errp)
+{
+    BlockDriverState *bs;
+    QEMUSnapshotInfo sn1, *sn = &sn1;
+    int ret = -1, ret2;
+    QEMUFile *f;
+    int saved_vm_running;
+    uint64_t vm_state_size;
+    g_autoptr(GDateTime) now = g_date_time_new_now_local();
+    AioContext *aio_context;
+
+    GLOBAL_STATE_CODE();
+
+    if (migration_is_blocked(errp)) {
+        return false;
+    }
+
+    if (!replay_can_snapshot()) {
+        error_setg(errp, "Record/replay does not allow making snapshot "
+                   "right now. Try once more later.");
+        return false;
+    }
+
+    if (!bdrv_all_can_snapshot(has_devices, devices, errp)) {
+        return false;
+    }
+
+    /* Delete old snapshots of the same name */
+    if (name) {
+        if (overwrite) {
+            if (bdrv_all_delete_snapshot(name, has_devices,
+                                         devices, errp) < 0) {
+                return false;
+            }
+        } else {
+            ret2 = bdrv_all_has_snapshot(name, has_devices, devices, errp);
+            if (ret2 < 0) {
+                return false;
+            }
+            if (ret2 == 1) {
+                error_setg(errp,
+                           "Snapshot '%s' already exists in one or more devices",
+                           name);
+                return false;
+            }
+        }
+    }
+
+    bs = bdrv_all_find_vmstate_bs(vmstate, has_devices, devices, errp);
+    if (bs == NULL) {
+        return false;
+    }
+    aio_context = bdrv_get_aio_context(bs);
+
+    saved_vm_running = runstate_is_running();
+
+    global_state_store();
+    vm_stop(RUN_STATE_SAVE_VM);
+
+    bdrv_drain_all_begin();
+
+    aio_context_acquire(aio_context);
+
+    memset(sn, 0, sizeof(*sn));
+
+    /* fill auxiliary fields */
+    sn->date_sec = g_date_time_to_unix(now);
+    sn->date_nsec = g_date_time_get_microsecond(now) * 1000;
+    sn->vm_clock_nsec = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+    if (replay_mode != REPLAY_MODE_NONE) {
+        sn->icount = replay_get_current_icount();
+    } else {
+        sn->icount = -1ULL;
+    }
+
+    if (name) {
+        pstrcpy(sn->name, sizeof(sn->name), name);
+    } else {
+        g_autofree char *autoname = g_date_time_format(now,  "vm-%Y%m%d%H%M%S");
+        pstrcpy(sn->name, sizeof(sn->name), autoname);
+    }
+
+    /* save the VM state */
     char *zstd = get_zstd(errp);
     if (!zstd)
         goto the_end;
@@ -3083,6 +3218,7 @@ bool save_snapshot(const char *name, bool overwrite, const char *vmstate,
     }
     return ret == 0;
 }
+
 
 void qmp_xen_save_devices_state(const char *filename, bool has_live, bool live,
                                 Error **errp)
