@@ -3335,9 +3335,13 @@ bool load_snapshot(const char *name, const char *vmstate,
     aio_context_acquire(aio_context);
     ret = bdrv_snapshot_find(bs_vm_state, &sn, name);
     aio_context_release(aio_context);
+
+    char snapshot_name[293];
+    snprintf(snapshot_name, sizeof(snapshot_name), "%s.zstd", sn.name);
+
     if (ret < 0) {
         return false;
-    } else if (sn.vm_state_size == 0) {
+    } else if (sn.vm_state_size == 0 && !g_file_test(snapshot_name, G_FILE_TEST_IS_REGULAR)) {
         error_setg(errp, "This is a disk-only snapshot. Revert to it "
                    " offline using qemu-img");
         return false;
@@ -3357,8 +3361,6 @@ bool load_snapshot(const char *name, const char *vmstate,
         goto err_drain;
     }
 
-    char snapshot_name[293];
-    snprintf(snapshot_name, sizeof(snapshot_name), "%s.zstd", sn.name);
 
     /* restore the VM state */
     if (g_file_test(snapshot_name, G_FILE_TEST_IS_REGULAR)) {
@@ -3512,7 +3514,7 @@ static void snapshot_save_job_bh(void *opaque)
     SnapshotJob *s = container_of(job, SnapshotJob, common);
 
     job_progress_set_remaining(&s->common, 1);
-    s->ret = save_snapshot(s->tag, false, s->vmstate,
+    s->ret = save_snapshot_zstd(s->tag, false, s->vmstate,
                            true, s->devices, s->errp);
     job_progress_update(&s->common, 1);
 
