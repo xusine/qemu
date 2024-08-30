@@ -135,7 +135,7 @@ void icount_prepare_for_run(CPUState *cpu, int64_t cpu_budget)
 void icount_process_data(CPUState *cpu)
 {
     /* Account for executed instructions */
-    icount_update(cpu);
+    // icount_update(cpu);
 
     /* Reset the counters */
     cpu_neg(cpu)->icount_decr.u16.low = 0;

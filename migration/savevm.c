@@ -57,6 +57,7 @@
 #include "block/snapshot.h"
 #include "qemu/cutils.h"
 #include "io/channel-buffer.h"
+#include "io/channel-command.h"
 #include "io/channel-file.h"
 #include "sysemu/replay.h"
 #include "sysemu/runstate.h"
@@ -2919,6 +2920,15 @@ int qemu_loadvm_approve_switchover(void)
     return migrate_send_rp_switchover_ack(mis);
 }
 
+static char *get_zstd(Error **errp)
+{
+    char *zstd = g_find_program_in_path("zstd");
+    if (!zstd)
+        error_setg(errp, "zstd not found in PATH");
+
+    return zstd;
+}
+
 bool save_snapshot(const char *name, bool overwrite, const char *vmstate,
                   bool has_devices, strList *devices, Error **errp)
 {
@@ -3021,7 +3031,161 @@ bool save_snapshot(const char *name, bool overwrite, const char *vmstate,
 
     // TODO: Add a plugin callback here to dump snapshot as well.
     if (cyan_savevm_cb) {
-        cyan_savevm_cb(name);
+        cyan_savevm_cb(sn->name);
+    }
+
+    /* The bdrv_all_create_snapshot() call that follows acquires the AioContext
+     * for itself.  BDRV_POLL_WHILE() does not support nested locking because
+     * it only releases the lock once.  Therefore synchronous I/O will deadlock
+     * unless we release the AioContext before bdrv_all_create_snapshot().
+     */
+    aio_context_release(aio_context);
+    aio_context = NULL;
+
+    ret = bdrv_all_create_snapshot(sn, bs, vm_state_size,
+                                   has_devices, devices, errp);
+    if (ret < 0) {
+        bdrv_all_delete_snapshot(sn->name, has_devices, devices, NULL);
+        goto the_end;
+    }
+
+    ret = 0;
+
+ the_end:
+    if (aio_context) {
+        aio_context_release(aio_context);
+    }
+
+    bdrv_drain_all_end();
+
+    if (saved_vm_running) {
+        vm_start();
+    }
+    return ret == 0;
+}
+
+bool save_snapshot_zstd(const char *name, bool overwrite, const char *vmstate,
+                  bool has_devices, strList *devices, Error **errp)
+{
+    BlockDriverState *bs;
+    QEMUSnapshotInfo sn1, *sn = &sn1;
+    int ret = -1, ret2;
+    QEMUFile *f;
+    int saved_vm_running;
+    uint64_t vm_state_size;
+    g_autoptr(GDateTime) now = g_date_time_new_now_local();
+    AioContext *aio_context;
+
+    GLOBAL_STATE_CODE();
+
+    if (migration_is_blocked(errp)) {
+        return false;
+    }
+
+    if (!replay_can_snapshot()) {
+        error_setg(errp, "Record/replay does not allow making snapshot "
+                   "right now. Try once more later.");
+        return false;
+    }
+
+    if (!bdrv_all_can_snapshot(has_devices, devices, errp)) {
+        return false;
+    }
+
+    /* Delete old snapshots of the same name */
+    if (name) {
+        if (overwrite) {
+            if (bdrv_all_delete_snapshot(name, has_devices,
+                                         devices, errp) < 0) {
+                return false;
+            }
+        } else {
+            ret2 = bdrv_all_has_snapshot(name, has_devices, devices, errp);
+            if (ret2 < 0) {
+                return false;
+            }
+            if (ret2 == 1) {
+                error_setg(errp,
+                           "Snapshot '%s' already exists in one or more devices",
+                           name);
+                return false;
+            }
+        }
+    }
+
+    bs = bdrv_all_find_vmstate_bs(vmstate, has_devices, devices, errp);
+    if (bs == NULL) {
+        return false;
+    }
+    aio_context = bdrv_get_aio_context(bs);
+
+    saved_vm_running = runstate_is_running();
+
+    global_state_store();
+    vm_stop(RUN_STATE_SAVE_VM);
+
+    bdrv_drain_all_begin();
+
+    aio_context_acquire(aio_context);
+
+    memset(sn, 0, sizeof(*sn));
+
+    /* fill auxiliary fields */
+    sn->date_sec = g_date_time_to_unix(now);
+    sn->date_nsec = g_date_time_get_microsecond(now) * 1000;
+    sn->vm_clock_nsec = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+    if (replay_mode != REPLAY_MODE_NONE) {
+        sn->icount = replay_get_current_icount();
+    } else {
+        sn->icount = -1ULL;
+    }
+
+    if (name) {
+        pstrcpy(sn->name, sizeof(sn->name), name);
+    } else {
+        g_autofree char *autoname = g_date_time_format(now,  "vm-%Y%m%d%H%M%S");
+        pstrcpy(sn->name, sizeof(sn->name), autoname);
+    }
+
+    /* save the VM state */
+    char *zstd = get_zstd(errp);
+    if (!zstd)
+        goto the_end;
+
+    char snapshot_file_name[293];
+    snprintf(snapshot_file_name, sizeof(snapshot_file_name), "%s.zstd", sn->name);
+
+    const char *args[] = {zstd, "-f", "-q", "-T0", "-o", snapshot_file_name, NULL};
+
+    QIOChannelCommand *ioc = qio_channel_command_new_spawn(args, O_WRONLY, errp);
+    if (!ioc) {
+        error_setg(errp, "Could not create pipe for zstd");
+        goto the_end;
+    }
+
+    qio_channel_set_name(QIO_CHANNEL(ioc), "save_snapshot");
+
+    f = qemu_file_new_output(QIO_CHANNEL(ioc));
+    if (!f) {
+        error_setg(errp, "Could not open VM state file");
+        goto the_end;
+    }
+
+    g_free(zstd);
+
+    ret = qemu_savevm_state(f, errp);
+    vm_state_size = qemu_file_transferred_noflush(f);
+    ret2 = qemu_fclose(f);
+    if (ret < 0) {
+        goto the_end;
+    }
+    if (ret2 < 0) {
+        ret = ret2;
+        goto the_end;
+    }
+    // TODO: Add a plugin callback here to dump snapshot as well.
+    if (cyan_savevm_cb) {
+        cyan_savevm_cb(sn->name);
     }
 
 
@@ -3054,6 +3218,7 @@ bool save_snapshot(const char *name, bool overwrite, const char *vmstate,
     }
     return ret == 0;
 }
+
 
 void qmp_xen_save_devices_state(const char *filename, bool has_live, bool live,
                                 Error **errp)
@@ -3170,9 +3335,13 @@ bool load_snapshot(const char *name, const char *vmstate,
     aio_context_acquire(aio_context);
     ret = bdrv_snapshot_find(bs_vm_state, &sn, name);
     aio_context_release(aio_context);
+
+    char snapshot_name[293];
+    snprintf(snapshot_name, sizeof(snapshot_name), "%s.zstd", sn.name);
+
     if (ret < 0) {
         return false;
-    } else if (sn.vm_state_size == 0) {
+    } else if (sn.vm_state_size == 0 && !g_file_test(snapshot_name, G_FILE_TEST_IS_REGULAR)) {
         error_setg(errp, "This is a disk-only snapshot. Revert to it "
                    " offline using qemu-img");
         return false;
@@ -3192,11 +3361,37 @@ bool load_snapshot(const char *name, const char *vmstate,
         goto err_drain;
     }
 
+
     /* restore the VM state */
-    f = qemu_fopen_bdrv(bs_vm_state, 0);
-    if (!f) {
-        error_setg(errp, "Could not open VM state file");
-        goto err_drain;
+    if (g_file_test(snapshot_name, G_FILE_TEST_IS_REGULAR)) {
+        char *zstd = get_zstd(errp);
+        if (!zstd)
+            return false;
+
+        const char *args[] = {zstd, "-f", "-q", "-T0", "-d", "-c", snapshot_name, NULL};
+
+        QIOChannelCommand *ioc = qio_channel_command_new_spawn(args, O_RDONLY, errp);
+        if (!ioc) {
+            error_setg(errp, "Could not create pipe for zstd");
+            return false;
+        }
+
+        qio_channel_set_name(QIO_CHANNEL(ioc), "load_snapshot");
+
+        f = qemu_file_new_input(QIO_CHANNEL(ioc));
+        if (!f) {
+            error_setg(errp, "Could not open VM state file");
+            return false;
+        }
+
+        g_free(zstd);
+
+    } else {
+        f = qemu_fopen_bdrv(bs_vm_state, 0);
+        if (!f) {
+            error_setg(errp, "Could not open VM state file");
+            goto err_drain;
+        }
     }
 
     qemu_system_reset(SHUTDOWN_CAUSE_SNAPSHOT_LOAD);
@@ -3209,6 +3404,12 @@ bool load_snapshot(const char *name, const char *vmstate,
     aio_context_acquire(aio_context);
     ret = qemu_loadvm_state(f);
     migration_incoming_state_destroy();
+
+    // Ask the plugin to load the snapshot.
+    if (cyan_loadvm_cb) {
+        cyan_loadvm_cb(sn.name);
+    }
+
     aio_context_release(aio_context);
 
     bdrv_drain_all_end();
@@ -3313,7 +3514,7 @@ static void snapshot_save_job_bh(void *opaque)
     SnapshotJob *s = container_of(job, SnapshotJob, common);
 
     job_progress_set_remaining(&s->common, 1);
-    s->ret = save_snapshot(s->tag, false, s->vmstate,
+    s->ret = save_snapshot_zstd(s->tag, false, s->vmstate,
                            true, s->devices, s->errp);
     job_progress_update(&s->common, 1);
 

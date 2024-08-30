@@ -405,7 +405,7 @@ void hmp_savevm(Monitor *mon, const QDict *qdict)
 {
     Error *err = NULL;
 
-    save_snapshot(qdict_get_try_str(qdict, "name"),
+    save_snapshot_zstd(qdict_get_try_str(qdict, "name"),
                   true, NULL, false, NULL, &err);
     hmp_handle_error(mon, err);
 }

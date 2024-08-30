@@ -56,6 +56,8 @@ static bool icount_sleep = true;
  * 2 = Runtime adaptive algorithm to compute shift
  */
 int use_icount;
+uint64_t icount_switch_period;
+uint64_t icount_checking_period;
 
 static void icount_enable_precise(void)
 {
@@ -106,6 +108,18 @@ void icount_update(CPUState *cpu)
                          &timers_state.vm_clock_lock);
 }
 
+void icount_increase(int64_t incr) 
+{
+    seqlock_write_lock(&timers_state.vm_clock_seqlock,
+                       &timers_state.vm_clock_lock);
+
+    qatomic_set_i64(&timers_state.qemu_icount,
+                    timers_state.qemu_icount + incr);
+
+    seqlock_write_unlock(&timers_state.vm_clock_seqlock,
+                         &timers_state.vm_clock_lock);
+}
+
 static int64_t icount_get_raw_locked(void)
 {
     CPUState *cpu = current_cpu;
@@ -116,7 +130,7 @@ static int64_t icount_get_raw_locked(void)
             exit(1);
         }
         /* Take into account what has run */
-        icount_update_locked(cpu);
+        // icount_update_locked(cpu);
     }
     /* The read is protected by the seqlock, but needs atomic64 to avoid UB */
     return qatomic_read_i64(&timers_state.qemu_icount);
@@ -126,7 +140,7 @@ static int64_t icount_get_locked(void)
 {
     int64_t icount = icount_get_raw_locked();
     return qatomic_read_i64(&timers_state.qemu_icount_bias) +
-        icount_to_ns(icount);
+        icount_to_ns(icount) + timers_state.virtual_clock_snapshot;
 }
 
 int64_t icount_get_raw(void)
@@ -425,6 +439,9 @@ void icount_configure(QemuOpts *opts, Error **errp)
     const char *option = qemu_opt_get(opts, "shift");
     bool sleep = qemu_opt_get_bool(opts, "sleep", true);
     bool align = qemu_opt_get_bool(opts, "align", false);
+    uint64_t period = qemu_opt_get_number(opts, "q", 1000);
+    icount_switch_period = period;
+    icount_checking_period = qemu_opt_get_number(opts, "check_period", 0);
     long time_shift = -1;
 
     if (!option) {
@@ -466,6 +483,8 @@ void icount_configure(QemuOpts *opts, Error **errp)
         icount_enable_precise();
         return;
     }
+
+    assert(false && "Auto icount is not supported in this QEMU.");
 
     icount_enable_adaptive();
 

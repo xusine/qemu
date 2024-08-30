@@ -36,6 +36,7 @@
 #include "tcg-accel-ops.h"
 #include "tcg-accel-ops-rr.h"
 #include "tcg-accel-ops-icount.h"
+#include "qemu/plugin-cyan.h"
 
 /* Kick all RR vCPUs */
 void rr_kick_vcpu_thread(CPUState *unused)
@@ -214,6 +215,9 @@ static void *rr_cpu_thread_fn(void *arg)
     /* process any pending work */
     cpu->exit_request = 1;
 
+    uint64_t all_cores_round_robin_count = 0;
+    uint64_t next_check_threshold = icount_checking_period;
+
     while (1) {
         /* Only used for icount_enabled() */
         int64_t cpu_budget = 0;
@@ -233,12 +237,23 @@ static void *rr_cpu_thread_fn(void *arg)
              */
             icount_handle_deadline();
 
-            cpu_budget = icount_percpu_budget(cpu_count);
+            int64_t original_budget = icount_percpu_budget(cpu_count);
+
+            if (icount_switch_period != 0) {
+                cpu_budget = icount_switch_period > original_budget ? original_budget : icount_switch_period;
+            }
         }
 
         replay_mutex_unlock();
 
         if (!cpu) {
+            all_cores_round_robin_count += 1;
+            if (icount_checking_period != 0 && all_cores_round_robin_count > next_check_threshold) {
+                if (cyan_icount_periodic_checking_cb) cyan_icount_periodic_checking_cb();
+                next_check_threshold += icount_checking_period;
+            }
+            // The time is increased here to avoid problem.
+            icount_increase(cpu_budget);
             cpu = first_cpu;
         }
 
@@ -299,6 +314,8 @@ static void *rr_cpu_thread_fn(void *arg)
         }
 
         rr_wait_io_event();
+
+        // Activate the plugn system.
         rr_deal_with_unplugged_cpus();
     }
 
