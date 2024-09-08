@@ -218,6 +218,10 @@ static void *rr_cpu_thread_fn(void *arg)
     uint64_t all_cores_round_robin_count = 0;
     uint64_t next_check_threshold = icount_checking_period;
 
+
+    uint64_t total_iteration = 0;
+    uint64_t total_budget = 0;
+
     while (1) {
         /* Only used for icount_enabled() */
         int64_t cpu_budget = 0;
@@ -227,7 +231,7 @@ static void *rr_cpu_thread_fn(void *arg)
         qemu_mutex_lock_iothread();
 
         if (icount_enabled()) {
-            int cpu_count = rr_cpu_count();
+//            int cpu_count = rr_cpu_count();
 
             /* Account partial waits to QEMU_CLOCK_VIRTUAL.  */
             icount_account_warp_timer();
@@ -237,7 +241,7 @@ static void *rr_cpu_thread_fn(void *arg)
              */
             icount_handle_deadline();
 
-            int64_t original_budget = icount_percpu_budget(cpu_count);
+            int64_t original_budget = icount_percpu_budget(1);
 
             if (icount_switch_period != 0) {
                 cpu_budget = icount_switch_period > original_budget ? original_budget : icount_switch_period;
@@ -254,6 +258,13 @@ static void *rr_cpu_thread_fn(void *arg)
             }
             // The time is increased here to avoid problem.
             icount_increase(cpu_budget);
+
+            total_budget += cpu_budget;
+            total_iteration += 1;
+
+            if (total_iteration % 10 == 0) {
+                printf("Average budget per iteration: %lf \n", (double)total_budget / total_iteration);
+            }
             cpu = first_cpu;
         }
 
