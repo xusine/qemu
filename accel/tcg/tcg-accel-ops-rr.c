@@ -170,6 +170,30 @@ static int rr_cpu_count(void)
     return cpu_count;
 }
 
+static void load_ipc_table(uint64_t *table, uint64_t core_count, const char *filename) {
+    // Each line of the file contains the IPC of the core.
+    // And it should be an integer.
+    FILE *file = fopen(filename, "r");
+    if (!file) {
+        // If this file does not exist, we assume all cores have the same IPC 1.
+        for (int i = 0; i < core_count; i++) {
+            table[i] = 1;
+        }
+
+        // print a log.
+        fprintf(stderr, "IPC file %s does not exist. Assume all cores have the same IPC 1.\n", filename);
+    } else {
+        char line[1024];
+        int i = 0;
+
+        while (fgets(line, 1024, file)) {
+            table[i] = strtoull(line, NULL, 10);
+            i++;
+        }
+        fclose(file);
+    }
+}
+
 /*
  * In the single-threaded case each vCPU is simulated in turn. If
  * there is more than a single vCPU we create a simple timer to kick
@@ -197,16 +221,23 @@ static void *rr_cpu_thread_fn(void *arg)
     cpu_thread_signal_created(cpu);
     qemu_guest_random_seed_thread_part2(cpu->random_seed);
 
+    uint64_t cpu_count = 0;
+
     /* wait for initial kick-off after machine start */
     while (first_cpu->stopped) {
         qemu_cond_wait_iothread(first_cpu->halt_cond);
 
         /* process any pending work */
         CPU_FOREACH(cpu) {
+            cpu_count += 1;
             current_cpu = cpu;
             qemu_wait_io_event_common(cpu);
         }
     }
+
+    // Load the IPC table.
+    uint64_t *ipc_table = g_new0(uint64_t, cpu_count);
+    load_ipc_table(ipc_table, cpu_count, "ipc.txt");
 
     rr_start_kick_timer();
 
@@ -219,8 +250,8 @@ static void *rr_cpu_thread_fn(void *arg)
     uint64_t next_check_threshold = icount_checking_period;
 
 
-    uint64_t total_iteration = 0;
-    uint64_t total_budget = 0;
+    // uint64_t __total_iteration = 0;
+    // uint64_t __total_budget = 0;
 
     while (1) {
         /* Only used for icount_enabled() */
@@ -259,12 +290,9 @@ static void *rr_cpu_thread_fn(void *arg)
             // The time is increased here to avoid problem.
             icount_increase(cpu_budget);
 
-            total_budget += cpu_budget;
-            total_iteration += 1;
+            // __total_budget += cpu_budget;
+            // __total_iteration += 1;
 
-            if (total_iteration % 10 == 0) {
-                printf("Average budget per iteration: %lf \n", (double)total_budget / total_iteration);
-            }
             cpu = first_cpu;
         }
 
@@ -282,7 +310,7 @@ static void *rr_cpu_thread_fn(void *arg)
 
                 qemu_mutex_unlock_iothread();
                 if (icount_enabled()) {
-                    icount_prepare_for_run(cpu, cpu_budget);
+                    icount_prepare_for_run(cpu, cpu_budget * ipc_table[cpu->cpu_index]);
                 }
                 r = tcg_cpus_exec(cpu);
                 if (icount_enabled()) {
@@ -332,6 +360,9 @@ static void *rr_cpu_thread_fn(void *arg)
 
     rcu_remove_force_rcu_notifier(&force_rcu);
     rcu_unregister_thread();
+
+    g_free(ipc_table);
+
     return NULL;
 }
 
