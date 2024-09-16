@@ -945,7 +945,7 @@ CYAN_API typedef void (*qemu_plugin_event_loop_poll_cb_t)(void);
 CYAN_API bool
 qemu_plugin_register_event_loop_poll_cb(qemu_plugin_event_loop_poll_cb_t cb);
 
-CYAN_API typedef void (*qemu_plugin_icount_periodic_checking_cb_t) (void);
+CYAN_API typedef void (*qemu_plugin_icount_periodic_checking_cb_t) (uint64_t consumed_icount);
 
 /**
  * qemu_plugin_register_icount_periodic_checking_cb() - register a callback for
