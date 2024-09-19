@@ -246,12 +246,10 @@ static void *rr_cpu_thread_fn(void *arg)
     /* process any pending work */
     cpu->exit_request = 1;
 
-    uint64_t all_cores_round_robin_count = 0;
     uint64_t next_check_threshold = icount_checking_period;
-
-
-    // uint64_t __total_iteration = 0;
-    // uint64_t __total_budget = 0;
+    
+    uint64_t cycle = 0;
+    uint64_t last_cycle = 0;
 
     while (1) {
         /* Only used for icount_enabled() */
@@ -282,18 +280,17 @@ static void *rr_cpu_thread_fn(void *arg)
         replay_mutex_unlock();
 
         if (!cpu) {
-            all_cores_round_robin_count += 1;
-            if (icount_checking_period != 0 && all_cores_round_robin_count > next_check_threshold) {
-                if (cyan_icount_periodic_checking_cb) cyan_icount_periodic_checking_cb(cpu_budget);
+            cycle += cpu_budget;
+            if (icount_checking_period != 0 && cycle >= next_check_threshold) {
+                if (cyan_icount_periodic_checking_cb) cyan_icount_periodic_checking_cb(cycle - last_cycle);
                 next_check_threshold += icount_checking_period;
+                last_cycle = cycle;
             }
+
             // The time is increased here to avoid problem.
             icount_increase(cpu_budget);
 
-            // __total_budget += cpu_budget;
-            // __total_iteration += 1;
-
-            cpu = first_cpu;
+           cpu = first_cpu;
         }
 
         while (cpu && cpu_work_list_empty(cpu) && !cpu->exit_request) {
