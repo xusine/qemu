@@ -17,6 +17,9 @@ void mttcg_kick_vcpu_thread(CPUState *cpu);
 void mttcg_start_vcpu_thread(CPUState *cpu);
 
 /* initialize the barrier for quantum */
-void mttcg_initialize_barrier(void);;
+void mttcg_initialize_barrier(void);
+
+/* initialize the IPC table for each thread */
+void mttcg_initialize_core_info_table(const char *file_name);
 
 #endif /* TCG_ACCEL_OPS_MTTCG_H */

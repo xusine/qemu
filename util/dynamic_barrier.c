@@ -166,14 +166,8 @@ uint32_t dynamic_barrier_polling_wait(dynamic_barrier_polling_t *barrier, uint32
     uint64_t waiting_count = barrier->count; 
     
     if (waiting_count == barrier->threshold - 1) {
-        if (current_gen > deplete_threshold + 1) {
-            if (quantum_deplete_cb != NULL) {
-                quantum_deplete_cb(); 
-            }
 
-            printf("Quantum is depleted\n");
-            exit(0);
-        }
+        if (quantum_deplete_cb != NULL) quantum_deplete_cb(); 
 
         barrier->count = 0;
 
