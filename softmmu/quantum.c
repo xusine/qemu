@@ -3,14 +3,19 @@
 #include "qemu/option.h"
 
 uint64_t quantum_size = 0;
+uint64_t quantum_check_threshold = 0;
 static uint64_t quantum_enabled_lower_bound = 0;
 static uint64_t quantum_enabled_upper_bound = 0;
-uint64_t deplete_threshold = 0;
-uint64_t high_half_core_ipc = 1;
 
 void quantum_configure(QemuOpts *opts, Error **errp) {
     uint64_t quantum_size_tmp = qemu_opt_get_number(opts, "size", 0);
-    deplete_threshold = qemu_opt_get_number(opts, "deplete_threshold", 0xffffffffffffffff);
+    // deplete_threshold = qemu_opt_get_number(opts, "deplete_threshold", 0xffffffffffffffff);
+    quantum_check_threshold = qemu_opt_get_number(opts, "check_period", 0);
+
+    if (quantum_check_threshold != 0) {
+        assert((quantum_check_threshold >= quantum_size_tmp) && (quantum_check_threshold % quantum_size_tmp == 0));
+    }
+
     const char *range = qemu_opt_get(opts, "range");
  
     if (!range) {
@@ -29,19 +34,6 @@ void quantum_configure(QemuOpts *opts, Error **errp) {
 
     // make it as a global value.
     quantum_size = quantum_size_tmp;
-
-    high_half_core_ipc = qemu_opt_get_number(opts, "high_half_core_ipc", 1);
     
     assert(quantum_size < 0x7fffffff);
-}
-
-inline bool is_vcpu_affiliated_with_quantum(uint64_t cpu_idx) {
-    if (quantum_size == 0) {
-        return false;
-    }
-
-    if (quantum_enabled_lower_bound <= cpu_idx && cpu_idx <= quantum_enabled_upper_bound) {
-        return true;
-    }
-    return false;
 }

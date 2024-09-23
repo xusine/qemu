@@ -133,6 +133,9 @@ int dynamic_barrier_polling_init(dynamic_barrier_polling_t *barrier, int initial
     for (int i = 0; i < 128; i++) {
         barrier->histogram[i] = create_histogram(100, 1e5, 101e5);
     }
+
+    barrier->current_cycle = 0;
+    barrier->next_check_threshold = quantum_check_threshold;
     
     return 0;
 }
@@ -166,8 +169,12 @@ uint32_t dynamic_barrier_polling_wait(dynamic_barrier_polling_t *barrier, uint32
     uint64_t waiting_count = barrier->count; 
     
     if (waiting_count == barrier->threshold - 1) {
+        barrier->current_cycle += quantum_size;
 
-        if (quantum_deplete_cb != NULL) quantum_deplete_cb(); 
+        if (barrier->next_check_threshold != 0 && barrier->current_cycle >= barrier->next_check_threshold) {
+            if (cyan_periodic_check_cb != NULL) cyan_periodic_check_cb(quantum_check_threshold);
+            barrier->next_check_threshold += quantum_check_threshold;
+        }
 
         barrier->count = 0;
 
@@ -206,16 +213,13 @@ int dynamic_barrier_polling_decrease_by_1(dynamic_barrier_polling_t *barrier) {
 
     barrier->threshold -= 1;
     uint64_t waiting_count = barrier->count;
-    uint64_t current_gen = atomic_load(&barrier->generation);
 
     if (waiting_count == barrier->threshold && waiting_count != 0) {
-        if (current_gen > deplete_threshold + 1) {
-            if (quantum_deplete_cb != NULL) {
-                quantum_deplete_cb(); 
-            }
+        barrier->current_cycle += quantum_size;
 
-            printf("Quantum is depleted\n");
-            exit(0);
+        if (barrier->next_check_threshold != 0 && barrier->current_cycle >= barrier->next_check_threshold) {
+            if (cyan_periodic_check_cb != NULL) cyan_periodic_check_cb(quantum_check_threshold);
+            barrier->next_check_threshold += quantum_check_threshold;
         }
 
 

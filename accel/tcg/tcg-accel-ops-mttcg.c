@@ -53,9 +53,9 @@ typedef struct core_meta_info_t {
 static core_meta_info_t core_info_table[256];
 
 void mttcg_initialize_core_info_table(const char *file_name) {
-    // By default, all cores' IPC is 1.
+    // By default, all cores' IPC is 0, which means not managed by the IPC and the quantum.
     for(uint64_t i = 0; i < 256; ++i) {
-        core_info_table[i].ipc = 1;
+        core_info_table[i].ipc = 0;
         core_info_table[i].affinity_core_idx = i;
     }
 
@@ -177,13 +177,6 @@ static void *mttcg_cpu_thread_fn(void *arg)
 
     cpu->ipc = core_info_table[cpu->cpu_index].ipc;
 
-    // MachineState *ms = MACHINE(qdev_get_machine());
-
-    // if (ms->smp.cpus % 2 == 0 && cpu->cpu_index >= ms->smp.cpus / 2) {
-    //     cpu->ipc = 1;
-    //     printf("CPU %d is in the high IPC mode. Its IPC is %ld\n", cpu->cpu_index, cpu->ipc);
-    // }
-
     assert(tcg_enabled());
     g_assert(!icount_enabled());
 
@@ -220,6 +213,8 @@ static void *mttcg_cpu_thread_fn(void *arg)
 
     bool not_running_yet = true;
 
+    bool affiliated_with_quantum = cpu->ipc && quantum_enabled();
+
     // uint64_t dumping_threshold = 300 * 1000 * 1000; // 300M
 
     // uint64_t ts0 = get_current_timestamp_ns();
@@ -233,10 +228,13 @@ static void *mttcg_cpu_thread_fn(void *arg)
                 cpu->target_cycle_on_instruction = 0;
 
                 // register the current thread to the barrier.
-                if (is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
+                if (affiliated_with_quantum) {
                     dynamic_barrier_polling_increase_by_1(&quantum_barrier);
                     qemu_log("Core%u Quantum Count: %lu \n", cpu->cpu_index, quantum_size);
                 }
+
+                // initialize the quantum budget.
+                cpu->env_ptr->quantum_budget_and_generation.separated.quantum_budget = quantum_size * cpu->ipc;
 
                 not_running_yet = false;
             }
@@ -247,7 +245,7 @@ static void *mttcg_cpu_thread_fn(void *arg)
             // check the quantum budget and sync before doing I/O operation.
             if (cpu->env_ptr->quantum_budget_depleted) {
                 cpu->env_ptr->quantum_budget_depleted = false;
-                if (is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
+                if (affiliated_with_quantum) {
                     while (cpu->env_ptr->quantum_budget_and_generation.separated.quantum_budget <= 0) {
                         uint32_t old_generation = cpu->env_ptr->quantum_budget_and_generation.separated.quantum_generation;
                         uint64_t new_generation = dynamic_barrier_polling_wait(&quantum_barrier, cpu->env_ptr->quantum_budget_and_generation.separated.quantum_generation);
@@ -259,7 +257,7 @@ static void *mttcg_cpu_thread_fn(void *arg)
                         }
                         
                         assert(new_generation == old_generation + 1);
-                        uint64_t new_budget_and_generation = cpu->env_ptr->quantum_budget_and_generation.separated.quantum_budget + quantum_size;
+                        uint64_t new_budget_and_generation = cpu->env_ptr->quantum_budget_and_generation.separated.quantum_budget + quantum_size * cpu->ipc;
                         new_budget_and_generation = new_budget_and_generation << 32 | new_generation;
                         cpu->env_ptr->quantum_budget_and_generation.combined = new_budget_and_generation;
                     }
@@ -286,9 +284,9 @@ static void *mttcg_cpu_thread_fn(void *arg)
                 qemu_mutex_unlock_iothread();
                 // Well, it is possible that this atomic step may deplete the quantum budget.
                 // What we have to do now is to give enough quantum budget to this CPU, and remove it afterwards. 
-                int64_t quantum_for_deduction = cpu->env_ptr->quantum_required * cpu->ipc;
+                int64_t quantum_for_deduction = cpu->env_ptr->quantum_required;
                 // We need to sync immediately to get the quantum budget. 
-                if (is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
+                if (affiliated_with_quantum) {
                     while (cpu->env_ptr->quantum_budget_and_generation.separated.quantum_budget <= quantum_for_deduction) {
                         uint32_t old_generation = cpu->env_ptr->quantum_budget_and_generation.separated.quantum_generation;
                         // assert(old_generation == statistic_head_counter);
@@ -303,7 +301,7 @@ static void *mttcg_cpu_thread_fn(void *arg)
                         }
                         assert(new_generation == old_generation + 1);
                     
-                        uint64_t new_budget_and_generation = cpu->env_ptr->quantum_budget_and_generation.separated.quantum_budget + quantum_size;
+                        uint64_t new_budget_and_generation = cpu->env_ptr->quantum_budget_and_generation.separated.quantum_budget + quantum_size * cpu->ipc;
                         new_budget_and_generation = new_budget_and_generation << 32 | new_generation;
                         cpu->env_ptr->quantum_budget_and_generation.combined = new_budget_and_generation;
                     }
@@ -328,7 +326,7 @@ static void *mttcg_cpu_thread_fn(void *arg)
     rcu_unregister_thread();
 
     // resign the current thread from the barrier.
-    if (is_vcpu_affiliated_with_quantum(cpu->cpu_index)) {
+    if (affiliated_with_quantum) {
         dynamic_barrier_polling_decrease_by_1(&quantum_barrier);
 
         // also, print the histogram.

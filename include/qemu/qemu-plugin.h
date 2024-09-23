@@ -898,13 +898,6 @@ CYAN_API bool qemu_plugin_register_savevm_cb(qemu_plugin_snapshot_cb_t cb);
  */
 CYAN_API bool qemu_plugin_register_loadvm_cb(qemu_plugin_snapshot_cb_t cb);
 
-// This is a temporal solution to call the Rust code when a specific number of
-// quantums is executed.
-CYAN_API typedef void (*qemu_plugin_quantum_deplete_cb_t)(void);
-
-CYAN_API bool
-qemu_plugin_register_quantum_deplete_cb(qemu_plugin_quantum_deplete_cb_t cb);
-
 /**
  * qemu_plugin_read_vts_base - return the base virtual time calculated from the
  * quantum budget and quantum generation.
@@ -945,25 +938,6 @@ CYAN_API typedef void (*qemu_plugin_event_loop_poll_cb_t)(void);
 CYAN_API bool
 qemu_plugin_register_event_loop_poll_cb(qemu_plugin_event_loop_poll_cb_t cb);
 
-CYAN_API typedef void (*qemu_plugin_icount_periodic_checking_cb_t) (uint64_t consumed_icount);
-
-/**
- * qemu_plugin_register_icount_periodic_checking_cb() - register a callback for
- * checking periodically when icount is increased to a specific value.
- * 
- * @cb: function is called when the icount is increased to a specific value.
- * 
- * returns true if the callback is registered successfully.
- * 
- * TODO: This callback is a dirty hack. It is because we need to know the userspace
- * instruction to report statistics and we cannot get the userspace instruction
- * inside QEMU. It has to come from the plugin. 
- * 
- * This part should be refactored afterwards.
- */
-CYAN_API bool
-qemu_plugin_register_icount_periodic_checking_cb(qemu_plugin_icount_periodic_checking_cb_t cb);
-
 /**
  * qemu_plugin_is_icount_mode - return whether the icount mode is enabled.
  * 
@@ -971,5 +945,23 @@ qemu_plugin_register_icount_periodic_checking_cb(qemu_plugin_icount_periodic_che
  */
 CYAN_API bool qemu_plugin_is_icount_mode(void);
 
+
+CYAN_API typedef void (*qemu_plugin_periodic_check_cb_t)(uint64_t passed_cycles);
+
+/**
+ * qemu_plugin_register_periodic_check_cb() - register a callback for periodic checking.
+ * 
+ * @cb: function is called every time the periodic checking is triggered.
+ * 
+ * There are two scenario when the periodic checking is triggered:
+ * - When icount mode is on, and the `icount_checking_period` is set to non-zero.
+ * - When quantum mode is on, and the `quantum_checking_period` is set to non-zero.
+ * 
+ * Without these options, the periodic checking will not be triggered.
+ * 
+ * The periodic checking is triggered every `icount_checking_period` or `quantum_checking_period` cycles.
+ * Cycles are calculated from the provided IPC and the instruction count.
+ */
+CYAN_API bool qemu_plugin_register_periodic_check_cb(qemu_plugin_periodic_check_cb_t cb);
 
 #endif /* QEMU_QEMU_PLUGIN_H */

@@ -39,14 +39,9 @@ qemu_plugin_cpu_clock_callback_t cyan_cpu_clock_cb = NULL;
 qemu_plugin_vcpu_branch_resolved_cb_t cyan_br_cb = NULL;
 qemu_plugin_snapshot_cb_t cyan_savevm_cb = NULL; 
 qemu_plugin_snapshot_cpu_clock_update_cb cyan_snapshot_cpu_clock_udpate_cb = NULL;
-qemu_plugin_quantum_deplete_cb_t quantum_deplete_cb = NULL;
 qemu_plugin_snapshot_cb_t cyan_loadvm_cb = NULL;
 qemu_plugin_event_loop_poll_cb_t cyan_el_pool_cb = NULL;
-qemu_plugin_icount_periodic_checking_cb_t cyan_icount_periodic_checking_cb = NULL;
-
-char cyan_snapshot_name[256];
-bool cyan_snapshot_requested = false;
-
+qemu_plugin_periodic_check_cb_t cyan_periodic_check_cb = NULL;
 
 void qemu_plugin_set_running_flag(bool is_running) {
   CPUState *cpu = current_cpu;
@@ -221,14 +216,6 @@ bool qemu_plugin_register_loadvm_cb(qemu_plugin_snapshot_cb_t cb) {
   return true;
 }
 
-bool qemu_plugin_register_quantum_deplete_cb(qemu_plugin_quantum_deplete_cb_t cb) {
-  if (quantum_deplete_cb) {
-    return false;
-  }
-  quantum_deplete_cb = cb;
-  return true;
-}
-
 uint64_t qemu_plugin_read_local_virtual_time_base(void) {
   g_assert_cmpstr(TARGET_NAME, ==, "aarch64");
   CPUState *cpu = current_cpu;
@@ -278,21 +265,16 @@ bool qemu_plugin_register_event_loop_poll_cb(qemu_plugin_event_loop_poll_cb_t cb
   return true;
 }
 
-bool qemu_plugin_register_icount_periodic_checking_cb(qemu_plugin_icount_periodic_checking_cb_t cb) {
-  assert(icount_enabled());
-  assert(icount_checking_period != 0);
-
-  if (cyan_icount_periodic_checking_cb) {
-    return false;
-  }
-
-  cyan_icount_periodic_checking_cb = cb;
-  return true;
-}
-
 bool qemu_plugin_is_icount_mode(void) {
   return icount_enabled();
 }
 
+bool qemu_plugin_register_periodic_check_cb(qemu_plugin_periodic_check_cb_t cb) {
+  if (cyan_periodic_check_cb) {
+    return false;
+  }
+  cyan_periodic_check_cb = cb;
+  return true;
+}
 
 #endif

@@ -803,7 +803,7 @@ typedef struct CPUArchState {
     union {
         struct {
             uint32_t quantum_generation; // which generation are you in now?
-            int32_t quantum_budget;
+            int32_t quantum_budget; // how many instructions can you execute in this generation?
         } separated;
         uint64_t combined;
     } quantum_budget_and_generation;
@@ -812,14 +812,14 @@ typedef struct CPUArchState {
 
     uint32_t quantum_generation_upper32;
 
-    uint64_t quantum_required; // Amount of quantum required for the current tb. This is dynamically update during the execution.
+    uint64_t quantum_required; // Number of instructions the current tb. This is dynamically update during the execution.
     int quantum_budget_depleted;
 
     uint64_t current_instruction_rdtsc;
 
     time_histogram_t *instruction_histogram;
 
-    uint64_t timer_interrupts_frequency[NUM_GTIMERS];
+    // uint64_t timer_interrupts_frequency[NUM_GTIMERS];
 } CPUARMState;
 
 static inline void set_feature(CPUARMState *env, int feature)

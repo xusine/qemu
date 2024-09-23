@@ -23,12 +23,12 @@ void HELPER(deduce_quantum)(CPUArchState *env) {
 
 uint32_t HELPER(check_and_deduce_quantum)(CPUArchState *env) {
     assert(quantum_enabled());
+    assert(current_cpu->env_ptr == env);
 
-    if (!is_vcpu_affiliated_with_quantum(current_cpu->cpu_index)) {
+    if (current_cpu->ipc == 0) {
         return false;
     }
 
-    assert(current_cpu->env_ptr == env);
     current_cpu->target_cycle_on_instruction += env->quantum_required;
 
     // deduction.

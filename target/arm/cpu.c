@@ -551,14 +551,14 @@ static void arm_cpu_reset_hold(Object *obj)
 
         // for quantum
         env->quantum_budget_and_generation.separated.quantum_generation = 0;
-        env->quantum_budget_and_generation.separated.quantum_budget = quantum_size;
+        env->quantum_budget_and_generation.separated.quantum_budget = 0;
         env->quantum_required = 0;
         env->quantum_budget_depleted = 0;
         env->quantum_generation_upper32 = 0;
 
-        for (int i = 0; i < NUM_GTIMERS; ++i) {
-            env->timer_interrupts_frequency[i] = 0;
-        }
+        // for (int i = 0; i < NUM_GTIMERS; ++i) {
+        //     env->timer_interrupts_frequency[i] = 0;
+        // }
 
         env->instruction_histogram = create_histogram(50, 0, 1250);
     }

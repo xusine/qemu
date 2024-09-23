@@ -42,6 +42,9 @@ typedef struct {
     uint64_t last_timestamp;
     uint64_t total_diff;
     time_histogram_t *histogram[128]; // each core has its own histogram.
+
+    uint64_t next_check_threshold;
+    uint64_t current_cycle;
 } dynamic_barrier_polling_t;
 
 int dynamic_barrier_polling_init(dynamic_barrier_polling_t *barrier, int initial_threshold);

@@ -442,6 +442,11 @@ void icount_configure(QemuOpts *opts, Error **errp)
     uint64_t period = qemu_opt_get_number(opts, "q", 1000);
     icount_switch_period = period;
     icount_checking_period = qemu_opt_get_number(opts, "check_period", 0);
+
+    if (icount_checking_period != 0) {
+        assert((icount_checking_period >= period) && (icount_checking_period % period == 0));
+    }
+
     long time_shift = -1;
 
     if (!option) {

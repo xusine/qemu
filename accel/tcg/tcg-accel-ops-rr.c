@@ -249,7 +249,6 @@ static void *rr_cpu_thread_fn(void *arg)
     uint64_t next_check_threshold = icount_checking_period;
     
     uint64_t cycle = 0;
-    uint64_t last_cycle = 0;
 
     while (1) {
         /* Only used for icount_enabled() */
@@ -282,9 +281,8 @@ static void *rr_cpu_thread_fn(void *arg)
         if (!cpu) {
             cycle += cpu_budget;
             if (icount_checking_period != 0 && cycle >= next_check_threshold) {
-                if (cyan_icount_periodic_checking_cb) cyan_icount_periodic_checking_cb(cycle - last_cycle);
+                if (cyan_periodic_check_cb) cyan_periodic_check_cb(icount_checking_period);
                 next_check_threshold += icount_checking_period;
-                last_cycle = cycle;
             }
 
             // The time is increased here to avoid problem.

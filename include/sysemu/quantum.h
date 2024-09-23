@@ -10,12 +10,9 @@
 
 void quantum_configure(QemuOpts *opts, Error **errp);
 
-bool is_vcpu_affiliated_with_quantum(uint64_t cpu_idx);
-
 #ifdef CONFIG_TCG
 extern uint64_t quantum_size;
-extern uint64_t deplete_threshold;
-extern uint64_t high_half_core_ipc;
+extern uint64_t quantum_check_threshold;
 #define quantum_enabled() (quantum_size != 0)
 #else
 #define quantum_enabled() (0)

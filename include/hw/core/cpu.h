@@ -451,7 +451,7 @@ struct CPUState {
     uint64_t target_cycle_on_instruction; 
 
     // State for deduction of the quantum.
-    uint64_t ipc; // instruction per quantum unit (i.e., quantum cycle)
+    uint64_t ipc; // instruction per quantum unit . 0 means this core is not managed by the quantum.
 };
 
 typedef QTAILQ_HEAD(CPUTailQ, CPUState) CPUTailQ;
