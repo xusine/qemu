@@ -469,16 +469,8 @@ static QemuOptsList qemu_quantum_opts = {
             .type = QEMU_OPT_NUMBER,
         },
         {
-            .name = "range",
-            .type = QEMU_OPT_STRING
-        },
-        {
-            .name = "deplete_threshold",
-            .type = QEMU_OPT_NUMBER
-        },
-        {
-            .name = "high_half_core_ipc",
-            .type = QEMU_OPT_NUMBER
+            .name = "check_period",
+            .type = QEMU_OPT_NUMBER,
         },
         { /* end of list */ 
         },
