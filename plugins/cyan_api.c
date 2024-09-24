@@ -273,6 +273,13 @@ bool qemu_plugin_register_periodic_check_cb(qemu_plugin_periodic_check_cb_t cb) 
   if (cyan_periodic_check_cb) {
     return false;
   }
+
+  assert(
+    ((icount_enabled() == true && icount_checking_period != 0) ||
+    (quantum_enabled() == true && quantum_check_threshold != 0) ) &&
+    "icount or quantum periodic check is not enabled"
+  );
+
   cyan_periodic_check_cb = cb;
   return true;
 }
