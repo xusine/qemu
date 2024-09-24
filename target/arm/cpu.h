@@ -800,17 +800,10 @@ typedef struct CPUArchState {
 #endif
 
     // quantum related variables
-    union {
-        struct {
-            uint32_t quantum_generation; // which generation are you in now?
-            int32_t quantum_budget; // how many instructions can you execute in this generation?
-        } separated;
-        uint64_t combined;
-    } quantum_budget_and_generation;
+    int64_t quantum_budget;
+    uint64_t quantum_generation;
 
     uint64_t __padding[6];
-
-    uint32_t quantum_generation_upper32;
 
     uint64_t quantum_required; // Number of instructions the current tb. This is dynamically update during the execution.
     int quantum_budget_depleted;

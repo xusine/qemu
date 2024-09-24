@@ -234,7 +234,7 @@ static void *mttcg_cpu_thread_fn(void *arg)
                 }
 
                 // initialize the quantum budget.
-                cpu->env_ptr->quantum_budget_and_generation.separated.quantum_budget = quantum_size * cpu->ipc;
+                cpu->env_ptr->quantum_budget = quantum_size * cpu->ipc;
 
                 not_running_yet = false;
             }
@@ -246,20 +246,14 @@ static void *mttcg_cpu_thread_fn(void *arg)
             if (cpu->env_ptr->quantum_budget_depleted) {
                 cpu->env_ptr->quantum_budget_depleted = false;
                 if (affiliated_with_quantum) {
-                    while (cpu->env_ptr->quantum_budget_and_generation.separated.quantum_budget <= 0) {
-                        uint32_t old_generation = cpu->env_ptr->quantum_budget_and_generation.separated.quantum_generation;
-                        uint64_t new_generation = dynamic_barrier_polling_wait(&quantum_barrier, cpu->env_ptr->quantum_budget_and_generation.separated.quantum_generation);
+                    while (cpu->env_ptr->quantum_budget <= 0) {
+                        uint64_t old_generation = cpu->env_ptr->quantum_generation;
+                        uint64_t new_generation = dynamic_barrier_polling_wait(&quantum_barrier, cpu->env_ptr->quantum_generation);
             
-                        bool overflow = (new_generation < old_generation);
-
-                        if (overflow) {
-                            cpu->env_ptr->quantum_generation_upper32 += 1;
-                        }
                         
                         assert(new_generation == old_generation + 1);
-                        uint64_t new_budget_and_generation = cpu->env_ptr->quantum_budget_and_generation.separated.quantum_budget + quantum_size * cpu->ipc;
-                        new_budget_and_generation = new_budget_and_generation << 32 | new_generation;
-                        cpu->env_ptr->quantum_budget_and_generation.combined = new_budget_and_generation;
+                        cpu->env_ptr->quantum_budget += quantum_size * cpu->ipc;
+                        cpu->env_ptr->quantum_generation = new_generation;
                     }
                     
                     if (r == EXCP_QUANTUM) {
@@ -287,23 +281,14 @@ static void *mttcg_cpu_thread_fn(void *arg)
                 int64_t quantum_for_deduction = cpu->env_ptr->quantum_required;
                 // We need to sync immediately to get the quantum budget. 
                 if (affiliated_with_quantum) {
-                    while (cpu->env_ptr->quantum_budget_and_generation.separated.quantum_budget <= quantum_for_deduction) {
-                        uint32_t old_generation = cpu->env_ptr->quantum_budget_and_generation.separated.quantum_generation;
-                        // assert(old_generation == statistic_head_counter);
-                        // uint64_t start_waiting = get_current_timestamp_ns();
-                        uint64_t new_generation = dynamic_barrier_polling_wait(&quantum_barrier, cpu->env_ptr->quantum_budget_and_generation.separated.quantum_generation);
+                    while (cpu->env_ptr->quantum_budget <= quantum_for_deduction) {
+                        uint64_t old_generation = cpu->env_ptr->quantum_generation;
+                        uint64_t new_generation = dynamic_barrier_polling_wait(&quantum_barrier, cpu->env_ptr->quantum_generation);
+            
                         
-                        bool overflow = (new_generation < old_generation);
-
-                        // We the need to increase the upper bound generation number when there is a overflow.
-                        if (overflow) {
-                            cpu->env_ptr->quantum_generation_upper32 += 1;
-                        }
                         assert(new_generation == old_generation + 1);
-                    
-                        uint64_t new_budget_and_generation = cpu->env_ptr->quantum_budget_and_generation.separated.quantum_budget + quantum_size * cpu->ipc;
-                        new_budget_and_generation = new_budget_and_generation << 32 | new_generation;
-                        cpu->env_ptr->quantum_budget_and_generation.combined = new_budget_and_generation;
+                        cpu->env_ptr->quantum_budget += quantum_size * cpu->ipc;
+                        cpu->env_ptr->quantum_generation = new_generation;
                     }
                 }
                 assert(cpu->env_ptr->quantum_budget_depleted == false);

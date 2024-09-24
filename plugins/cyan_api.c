@@ -221,24 +221,9 @@ uint64_t qemu_plugin_read_local_virtual_time_base(void) {
   CPUState *cpu = current_cpu;
   g_assert(cpu != NULL);
 
-  uint64_t quantum_generation = (uint64_t)cpu->env_ptr->quantum_generation_upper32 << 32;
-  int32_t quantum_budget = cpu->env_ptr->quantum_budget_and_generation.separated.quantum_budget;
-  quantum_generation |= cpu->env_ptr->quantum_budget_and_generation.separated.quantum_generation;
+  assert(false);
 
-  uint64_t vtime = quantum_generation * quantum_size;
-  
-  // now, we consider the quantum budget.
-  vtime += quantum_size;
-
-  // remove the existing quantum budget.
-  if (quantum_budget < 0) {
-    quantum_budget = -quantum_budget;
-    vtime += (uint64_t) quantum_budget;
-  } else {
-    vtime -= (uint64_t) quantum_budget;
-  }
-
-  return vtime;
+  return 0;
 }
 
 uint64_t qemu_plugin_get_quantum_size(void) {
