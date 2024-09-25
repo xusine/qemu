@@ -422,6 +422,18 @@ void qemu_wait_io_event_common(CPUState *cpu)
     process_queued_cpu_work(cpu);
 }
 
+static uint64_t get_current_timestamp_ns(void) {
+    struct timespec ts;
+    // Get the current time
+    clock_gettime(CLOCK_REALTIME, &ts);
+
+    // Convert to nanoseconds
+    // tv_sec is seconds, tv_nsec is nanoseconds
+    uint64_t timestamp_ns = (uint64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec;
+
+    return timestamp_ns;
+}
+
 uint64_t qemu_wait_io_event(CPUState *cpu, bool not_running_yet, uint32_t *current_quantum_generation)
 {
     bool slept = false;
@@ -447,12 +459,16 @@ uint64_t qemu_wait_io_event(CPUState *cpu, bool not_running_yet, uint32_t *curre
             if (affiliated_with_quantum) {
                 // OK, we assume 1M instruction / second speed when we are sleeping. 
                 // This number can be profiled more precisely later, and it can be also read from the excel sheet.
-                uint64_t sleep_time = cpu->quantum_budget / 1000;
-                qemu_cond_timedwait(cpu->halt_cond, &qemu_global_mutex, sleep_time);
-                
+                uint64_t current_host_time = get_current_timestamp_ns();
+                qemu_cond_timedwait(cpu->halt_cond, &qemu_global_mutex, cpu->quantum_budget / 1000);
+                uint64_t current_host_time_after_io = get_current_timestamp_ns();
+                uint64_t sleep_time = current_host_time_after_io - current_host_time;
                 // we can clean the quantum budget here.
-                cpu->quantum_budget -= sleep_time * 1000;
-                cpu->quantum_budget_depleted = 1;
+                cpu->quantum_budget -= sleep_time / 1000;
+                if (cpu->quantum_budget <= 0) {
+                    cpu->quantum_budget = 0;
+                    cpu->quantum_budget_depleted = 1;
+                }
             } else {
                 qemu_cond_wait(cpu->halt_cond, &qemu_global_mutex);
             }
