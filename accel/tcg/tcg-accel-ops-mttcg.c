@@ -230,12 +230,12 @@ static void *mttcg_cpu_thread_fn(void *arg)
                 // register the current thread to the barrier.
                 if (affiliated_with_quantum) {
                     dynamic_barrier_polling_increase_by_1(&quantum_barrier);
-                    qemu_log("Core%u Quantum Count: %lu \n", cpu->cpu_index, quantum_size);
 
                     cpu->quantum_generation = 0;
                     cpu->quantum_budget = quantum_size * cpu->ipc;
                     cpu->quantum_required = 0;
                     cpu->quantum_budget_depleted = 0;
+                    qemu_log("Core%u Quantum Count: %lu cycles, %lu instructions \n", cpu->cpu_index, quantum_size, quantum_size * cpu->ipc);
                 }
 
                 // initialize the quantum budget.
@@ -309,6 +309,7 @@ static void *mttcg_cpu_thread_fn(void *arg)
 
         // it is possible that the quantum budget is depleted due to the idle state.
         if (affiliated_with_quantum && cpu->quantum_budget_depleted) {
+            qemu_mutex_unlock_iothread();
             cpu->quantum_budget_depleted = false;
             if (affiliated_with_quantum) {
                 while (cpu->quantum_budget <= 0) {
@@ -323,6 +324,7 @@ static void *mttcg_cpu_thread_fn(void *arg)
             } else {
                 assert(false);
             }
+            qemu_mutex_lock_iothread();
         }
     } while (!cpu->unplug || cpu_can_run(cpu));
 
