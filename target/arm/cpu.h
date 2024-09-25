@@ -799,20 +799,6 @@ typedef struct CPUArchState {
     bool tagged_addr_enable;
 #endif
 
-    // quantum related variables
-    int64_t quantum_budget;
-    uint64_t quantum_generation;
-
-    uint64_t __padding[6];
-
-    uint64_t quantum_required; // Number of instructions the current tb. This is dynamically update during the execution.
-    int quantum_budget_depleted;
-
-    uint64_t current_instruction_rdtsc;
-
-    time_histogram_t *instruction_histogram;
-
-    // uint64_t timer_interrupts_frequency[NUM_GTIMERS];
 } CPUARMState;
 
 static inline void set_feature(CPUARMState *env, int feature)

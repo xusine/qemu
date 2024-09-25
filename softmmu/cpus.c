@@ -440,7 +440,27 @@ uint64_t qemu_wait_io_event(CPUState *cpu, bool not_running_yet, uint32_t *curre
 
         // uint64_t current_cpu_clock = cpu_get_clock_locked();
 
-        qemu_cond_wait(cpu->halt_cond, &qemu_global_mutex);
+        // I need to calculate the number of host miliseconds that I have been sleeping.
+
+        if (runstate_is_running()) {
+            bool affiliated_with_quantum = cpu->ipc != 0 && quantum_enabled();
+            if (affiliated_with_quantum) {
+                // OK, we assume 1M instruction / second speed when we are sleeping. 
+                // This number can be profiled more precisely later, and it can be also read from the excel sheet.
+                uint64_t sleep_time = cpu->quantum_budget / 1000;
+                qemu_cond_timedwait(cpu->halt_cond, &qemu_global_mutex, sleep_time);
+                
+                // we can clean the quantum budget here.
+                cpu->quantum_budget -= sleep_time * 1000;
+                cpu->quantum_budget_depleted = 1;
+            } else {
+                qemu_cond_wait(cpu->halt_cond, &qemu_global_mutex);
+            }
+        } else {
+            // well, there is no need to timeout. This is stopped by the system.
+            qemu_cond_wait(cpu->halt_cond, &qemu_global_mutex);
+        }
+
 
         // uint64_t current_cpu_clock_after_io = cpu_get_clock_locked();
 

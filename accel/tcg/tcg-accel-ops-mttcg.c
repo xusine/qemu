@@ -231,11 +231,14 @@ static void *mttcg_cpu_thread_fn(void *arg)
                 if (affiliated_with_quantum) {
                     dynamic_barrier_polling_increase_by_1(&quantum_barrier);
                     qemu_log("Core%u Quantum Count: %lu \n", cpu->cpu_index, quantum_size);
+
+                    cpu->quantum_generation = 0;
+                    cpu->quantum_budget = quantum_size * cpu->ipc;
+                    cpu->quantum_required = 0;
+                    cpu->quantum_budget_depleted = 0;
                 }
 
                 // initialize the quantum budget.
-                cpu->env_ptr->quantum_budget = quantum_size * cpu->ipc;
-
                 not_running_yet = false;
             }
 
@@ -243,17 +246,17 @@ static void *mttcg_cpu_thread_fn(void *arg)
             qemu_mutex_unlock_iothread();
             r = tcg_cpus_exec(cpu);
             // check the quantum budget and sync before doing I/O operation.
-            if (cpu->env_ptr->quantum_budget_depleted) {
-                cpu->env_ptr->quantum_budget_depleted = false;
+            if (cpu->quantum_budget_depleted) {
+                cpu->quantum_budget_depleted = false;
                 if (affiliated_with_quantum) {
-                    while (cpu->env_ptr->quantum_budget <= 0) {
-                        uint64_t old_generation = cpu->env_ptr->quantum_generation;
-                        uint64_t new_generation = dynamic_barrier_polling_wait(&quantum_barrier, cpu->env_ptr->quantum_generation);
+                    while (cpu->quantum_budget <= 0) {
+                        uint64_t old_generation = cpu->quantum_generation;
+                        uint64_t new_generation = dynamic_barrier_polling_wait(&quantum_barrier, cpu->quantum_generation);
             
                         
                         assert(new_generation == old_generation + 1);
-                        cpu->env_ptr->quantum_budget += quantum_size * cpu->ipc;
-                        cpu->env_ptr->quantum_generation = new_generation;
+                        cpu->quantum_budget += quantum_size * cpu->ipc;
+                        cpu->quantum_generation = new_generation;
                     }
                     
                     if (r == EXCP_QUANTUM) {
@@ -278,20 +281,20 @@ static void *mttcg_cpu_thread_fn(void *arg)
                 qemu_mutex_unlock_iothread();
                 // Well, it is possible that this atomic step may deplete the quantum budget.
                 // What we have to do now is to give enough quantum budget to this CPU, and remove it afterwards. 
-                int64_t quantum_for_deduction = cpu->env_ptr->quantum_required;
+                int64_t quantum_for_deduction = cpu->quantum_required;
                 // We need to sync immediately to get the quantum budget. 
                 if (affiliated_with_quantum) {
-                    while (cpu->env_ptr->quantum_budget <= quantum_for_deduction) {
-                        uint64_t old_generation = cpu->env_ptr->quantum_generation;
-                        uint64_t new_generation = dynamic_barrier_polling_wait(&quantum_barrier, cpu->env_ptr->quantum_generation);
+                    while (cpu->quantum_budget <= quantum_for_deduction) {
+                        uint64_t old_generation = cpu->quantum_generation;
+                        uint64_t new_generation = dynamic_barrier_polling_wait(&quantum_barrier, cpu->quantum_generation);
             
                         
                         assert(new_generation == old_generation + 1);
-                        cpu->env_ptr->quantum_budget += quantum_size * cpu->ipc;
-                        cpu->env_ptr->quantum_generation = new_generation;
+                        cpu->quantum_budget += quantum_size * cpu->ipc;
+                        cpu->quantum_generation = new_generation;
                     }
                 }
-                assert(cpu->env_ptr->quantum_budget_depleted == false);
+                assert(cpu->quantum_budget_depleted == false);
                 cpu_exec_step_atomic(cpu);
                 qemu_mutex_lock_iothread();
             default:
@@ -303,6 +306,24 @@ static void *mttcg_cpu_thread_fn(void *arg)
         qatomic_set_mb(&cpu->exit_request, 0);
         uint32_t current_quantum_generation = 0;
         qemu_wait_io_event(cpu, not_running_yet, &current_quantum_generation); // This function will not decouple the thread from the barrier anymore.
+
+        // it is possible that the quantum budget is depleted due to the idle state.
+        if (affiliated_with_quantum && cpu->quantum_budget_depleted) {
+            cpu->quantum_budget_depleted = false;
+            if (affiliated_with_quantum) {
+                while (cpu->quantum_budget <= 0) {
+                    uint64_t old_generation = cpu->quantum_generation;
+                    uint64_t new_generation = dynamic_barrier_polling_wait(&quantum_barrier, cpu->quantum_generation);
+        
+                    
+                    assert(new_generation == old_generation + 1);
+                    cpu->quantum_budget += quantum_size * cpu->ipc;
+                    cpu->quantum_generation = new_generation;
+                }
+            } else {
+                assert(false);
+            }
+        }
     } while (!cpu->unplug || cpu_can_run(cpu));
 
     tcg_cpus_destroy(cpu);

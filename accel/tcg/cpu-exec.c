@@ -565,7 +565,7 @@ static void cpu_exec_longjmp_cleanup(CPUState *cpu)
 
     // Also clean the quantum requirement, considering that the instruction is not directly finished. 
     // I know this is not a best practice, but we have to do so to avoid livelock...
-    cpu->env_ptr->quantum_required = 0;
+    cpu->quantum_required = 0;
 }
 
 void cpu_exec_step_atomic(CPUState *cpu)
@@ -912,7 +912,7 @@ static inline bool cpu_handle_interrupt(CPUState *cpu,
     }
 
     // In the end, we check the quantum depletion. 
-    if (cpu->env_ptr->quantum_budget_depleted && cpu->ipc != 0 && quantum_enabled()) {
+    if (cpu->quantum_budget_depleted && cpu->ipc != 0 && quantum_enabled()) {
         if (cpu->exception_index == -1) {
             cpu->exception_index = EXCP_QUANTUM;
         }
@@ -950,7 +950,7 @@ static inline void cpu_loop_exec_tb(CPUState *cpu, TranslationBlock *tb,
 
     if (!icount_enabled()) {
         // nice. this is due to quantum deplete.
-        assert(cpu->env_ptr->quantum_budget_depleted == 1);
+        assert(cpu->quantum_budget_depleted == 1);
         return;
     }
 
