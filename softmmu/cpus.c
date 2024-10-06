@@ -48,6 +48,7 @@
 #include "trace.h"
 #include "qemu/dynamic_barrier.h"
 #include "sysemu/quantum.h"
+#include "qemu/plugin-cyan.h"
 
 // This function is used to get the current clock of the CPU.
 // It is helpful when we want to know the current target clock. 
@@ -465,6 +466,9 @@ uint64_t qemu_wait_io_event(CPUState *cpu, bool not_running_yet, uint32_t *curre
                 uint64_t sleep_time = current_host_time_after_io - current_host_time;
                 // we can clean the quantum budget here.
                 cpu->quantum_budget -= sleep_time / 1000;
+                // increase the time as well.
+                cpu_virtual_time[cpu->cpu_index].vts += (sleep_time / 1000) * 100 / cpu->ipc;
+
                 if (cpu->quantum_budget <= 0) {
                     cpu->quantum_budget = 0;
                     cpu->quantum_budget_depleted = 1;

@@ -180,6 +180,22 @@ uint32_t dynamic_barrier_polling_wait(dynamic_barrier_polling_t *barrier, uint32
 
         // increase the generation and notify others.
         atomic_fetch_add(&barrier->generation, 1);
+
+        // The last core will synchronize the time to all cores.
+        // Find the maximum vtime.
+        uint64_t max_vtime = 0;
+        for (int i = 0; i < 128; i++) {
+            uint64_t vtime = cpu_virtual_time[i].vts;
+            if (vtime > max_vtime) {
+                max_vtime = vtime;
+            }
+        }
+
+        // Synchronize the time.
+        for (int i = 0; i < 128; i++) {
+            cpu_virtual_time[i].vts = max_vtime;
+        }
+
         dynamic_barrier_polling_release_lock(barrier); // we can release the generation here. 
     } else {
         barrier->count += 1;

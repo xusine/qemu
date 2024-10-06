@@ -25,6 +25,7 @@
 
 #include "qemu/osdep.h"
 #include "sysemu/tcg.h"
+#include "qemu/plugin-cyan.h"
 #include "qemu/typedefs.h"
 #include "sysemu/replay.h"
 #include "sysemu/cpu-timers.h"
@@ -63,8 +64,8 @@ void mttcg_initialize_core_info_table(const char *file_name) {
     FILE *fp = fopen(file_name, "r");
     if (!fp) {
         // we don't do anything if the file is not found.
-        qemu_log("IPC file is not found. We will use the default IPC value.\n");
-        return;
+        printf("IPC file (%s) is not found. It is needed under the quantum mode\n", file_name);
+        exit(1);
     }
 
     char line[1024];
@@ -81,6 +82,7 @@ void mttcg_initialize_core_info_table(const char *file_name) {
     while(fgets(line, 1024, fp) != NULL) {
         char *token = strtok(line, ",");
         core_info_table[core_id].ipc = atoi(token);
+        assert(core_info_table[core_id].ipc > 0 && "IPC should be greater than 0");
         token = strtok(NULL, ",");
         core_info_table[core_id].affinity_core_idx = atoi(token);
         core_id += 1;

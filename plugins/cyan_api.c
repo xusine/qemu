@@ -32,6 +32,7 @@
 #include "sysemu/quantum.h"
 #include "migration/snapshot.h"
 #include "qapi/error.h"
+#include "hw/core/cpu.h"
 
 
 // All cyan callback functions
@@ -42,6 +43,9 @@ qemu_plugin_snapshot_cpu_clock_update_cb cyan_snapshot_cpu_clock_udpate_cb = NUL
 qemu_plugin_snapshot_cb_t cyan_loadvm_cb = NULL;
 qemu_plugin_event_loop_poll_cb_t cyan_el_pool_cb = NULL;
 qemu_plugin_periodic_check_cb_t cyan_periodic_check_cb = NULL;
+
+// The virtual time of each CPUs.
+struct cpu_virtual_time_t cpu_virtual_time[256];
 
 void qemu_plugin_set_running_flag(bool is_running) {
   CPUState *cpu = current_cpu;
@@ -216,16 +220,6 @@ bool qemu_plugin_register_loadvm_cb(qemu_plugin_snapshot_cb_t cb) {
   return true;
 }
 
-uint64_t qemu_plugin_read_local_virtual_time_base(void) {
-  g_assert_cmpstr(TARGET_NAME, ==, "aarch64");
-  CPUState *cpu = current_cpu;
-  g_assert(cpu != NULL);
-
-  assert(false);
-
-  return 0;
-}
-
 uint64_t qemu_plugin_get_quantum_size(void) {
   if(quantum_enabled()) return quantum_size;
 
@@ -267,6 +261,19 @@ bool qemu_plugin_register_periodic_check_cb(qemu_plugin_periodic_check_cb_t cb) 
 
   cyan_periodic_check_cb = cb;
   return true;
+}
+
+uint64_t qemu_plugin_get_vcpu_vtime(uint32_t cpu_idx) {
+  return cpu_virtual_time[cpu_idx].vts;
+}
+
+void qemu_plugin_set_vcpu_vtime(uint32_t cpu_idx, uint64_t vtime) {
+  cpu_virtual_time[cpu_idx].vts = vtime;
+}
+
+uint64_t qemu_plugin_get_vcpu_ipc(uint32_t cpu_idx) {
+  assert(current_cpu && current_cpu->cpu_index == cpu_idx);
+  return current_cpu->ipc;
 }
 
 #endif

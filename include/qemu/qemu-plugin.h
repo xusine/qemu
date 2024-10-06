@@ -899,16 +899,6 @@ CYAN_API bool qemu_plugin_register_savevm_cb(qemu_plugin_snapshot_cb_t cb);
 CYAN_API bool qemu_plugin_register_loadvm_cb(qemu_plugin_snapshot_cb_t cb);
 
 /**
- * qemu_plugin_read_vts_base - return the base virtual time calculated from the
- * quantum budget and quantum generation.
- *
- * The return value does not contain the current translation block.
- * You need to add the bias by yourself to get the accurate virtual timestamp.
- *
- */
-CYAN_API uint64_t qemu_plugin_read_local_virtual_time_base(void);
-
-/**
  * qemu_plugin_get_quantum_size - return the quantum size.
  *
  * Return 0 if the quantum is not enabled.
@@ -940,28 +930,55 @@ qemu_plugin_register_event_loop_poll_cb(qemu_plugin_event_loop_poll_cb_t cb);
 
 /**
  * qemu_plugin_is_icount_mode - return whether the icount mode is enabled.
- * 
+ *
  * Returns true if the icount mode is enabled.
  */
 CYAN_API bool qemu_plugin_is_icount_mode(void);
 
-
-CYAN_API typedef void (*qemu_plugin_periodic_check_cb_t)(uint64_t passed_cycles);
+CYAN_API typedef void (*qemu_plugin_periodic_check_cb_t)(
+    uint64_t passed_cycles);
 
 /**
- * qemu_plugin_register_periodic_check_cb() - register a callback for periodic checking.
- * 
+ * qemu_plugin_register_periodic_check_cb() - register a callback for periodic
+ * checking.
+ *
  * @cb: function is called every time the periodic checking is triggered.
- * 
+ *
  * There are two scenario when the periodic checking is triggered:
- * - When icount mode is on, and the `icount_checking_period` is set to non-zero.
- * - When quantum mode is on, and the `quantum_checking_period` is set to non-zero.
- * 
+ * - When icount mode is on, and the `icount_checking_period` is set to
+ * non-zero.
+ * - When quantum mode is on, and the `quantum_checking_period` is set to
+ * non-zero.
+ *
  * Without these options, the periodic checking will not be triggered.
- * 
- * The periodic checking is triggered every `icount_checking_period` or `quantum_checking_period` cycles.
- * Cycles are calculated from the provided IPC and the instruction count.
+ *
+ * The periodic checking is triggered every `icount_checking_period` or
+ * `quantum_checking_period` cycles. Cycles are calculated from the provided IPC
+ * and the instruction count.
  */
-CYAN_API bool qemu_plugin_register_periodic_check_cb(qemu_plugin_periodic_check_cb_t cb);
+CYAN_API bool
+qemu_plugin_register_periodic_check_cb(qemu_plugin_periodic_check_cb_t cb);
+
+/**
+ * The following functions are used to get and set the virtual time of a
+ * specific vCPU.
+ *
+ * This part of the logic should be able to be implemented by the plugin itself.
+ *
+ * The unit, unfortunately, is centi-cycle.
+ */
+CYAN_API uint64_t qemu_plugin_get_vcpu_vtime(uint32_t cpu_idx);
+CYAN_API void qemu_plugin_set_vcpu_vtime(uint32_t cpu_idx, uint64_t vtime);
+CYAN_API uint64_t qemu_plugin_get_vcpu_ipc(uint32_t cpu_idx);
+
+// typedef struct qemu_per_cpu_exchangable_state_t {
+//   uint64_t ipc;
+//   uint64_t *vtime;
+//   uint64_t *pc;
+//   uint64_t *ttbr0_el1;
+//   uint64_t *ttbr1_el1;
+//   uint64_t *tcr_el1;
+//   uint64_t *xregs;
+// } qemu_per_cpu_exchangable_state_t;
 
 #endif /* QEMU_QEMU_PLUGIN_H */

@@ -35,4 +35,11 @@ extern qemu_plugin_event_loop_poll_cb_t cyan_el_pool_cb;
 // The periodic check callback for the plugin system.
 extern qemu_plugin_periodic_check_cb_t cyan_periodic_check_cb;
 
+struct cpu_virtual_time_t {
+  uint64_t vts;
+  uint64_t __padding[7];
+};
+
+extern struct cpu_virtual_time_t cpu_virtual_time[256];
+
 #endif

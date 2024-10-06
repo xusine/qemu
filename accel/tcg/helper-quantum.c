@@ -7,6 +7,7 @@
 #include "cpu.h"
 #include "hw/core/cpu.h"
 #include "sysemu/quantum.h"
+#include "qemu/plugin-cyan.h"
 
 void HELPER(deduce_quantum)(CPUArchState *env) {
     assert(quantum_enabled());
@@ -15,6 +16,11 @@ void HELPER(deduce_quantum)(CPUArchState *env) {
 
     // deduction.
     current_cpu->quantum_budget -= current_cpu->quantum_required;
+
+
+    // increase the target cycle.
+    uint64_t current_index = current_cpu->cpu_index;
+    cpu_virtual_time[current_index].vts += current_cpu->quantum_required * 100 / current_cpu->ipc;
 }
 
 uint32_t HELPER(check_and_deduce_quantum)(CPUArchState *env) {
@@ -29,6 +35,10 @@ uint32_t HELPER(check_and_deduce_quantum)(CPUArchState *env) {
 
     // deduction.
     current_cpu->quantum_budget -= current_cpu->quantum_required;
+
+    // increase the target cycle.
+    uint64_t current_index = current_cpu->cpu_index;
+    cpu_virtual_time[current_index].vts += current_cpu->quantum_required * 100 / current_cpu->ipc;
     
     if (current_cpu->quantum_budget <= 0) {
         current_cpu->quantum_budget_depleted = 1;
