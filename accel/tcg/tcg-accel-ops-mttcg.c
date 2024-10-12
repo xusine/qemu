@@ -63,9 +63,14 @@ void mttcg_initialize_core_info_table(const char *file_name) {
     // Load the IPC from the file. Each line is a integer and suggests the IPC.
     FILE *fp = fopen(file_name, "r");
     if (!fp) {
-        // we don't do anything if the file is not found.
-        printf("IPC file (%s) is not found. It is needed under the quantum mode\n", file_name);
-        exit(1);
+        if (quantum_enabled()) {
+            // we don't do anything if the file is not found.
+            printf("IPC file (%s) is not found. It is needed under the quantum mode\n", file_name);
+            exit(1);
+        } else {
+            return;
+        }
+        
     }
 
     char line[1024];
