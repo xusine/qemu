@@ -13,6 +13,7 @@
 #include "exec/exec-all.h"
 #include "exec/translator.h"
 #include "exec/plugin-gen.h"
+#include "sysemu/cpu-timers.h"
 #include "tcg/tcg-op-common.h"
 #include "internal.h"
 #include "sysemu/quantum.h"
@@ -64,6 +65,10 @@ static TCGOp *gen_tb_start(DisasContextBase *db, uint32_t cflags)
          */
         tcg_gen_sub_i32(count, count, tcg_constant_i32(0));
         icount_start_insn = tcg_last_op();
+
+        // We also use this chance to increase the local target cycle count.
+        gen_helper_increase_target_cycle(cpu_env);
+
     }
 
     /*
@@ -162,7 +167,7 @@ void translator_loop(CPUState *cpu, TranslationBlock *tb, int *max_insns,
 
     // For quantum deduce instruction.
     TCGOp *quantum_start_insn = NULL;
-    if (quantum_enabled()) {
+    if (quantum_enabled() || icount_enabled()) {
         gen_helper_set_quantum_requirement_example(cpu_env, tcg_constant_i32(0));
         quantum_start_insn = tcg_last_op();
     }
@@ -232,7 +237,7 @@ void translator_loop(CPUState *cpu, TranslationBlock *tb, int *max_insns,
     // This should be updated inside the plugin during execution.
     // Here we use instruction count as the simplest example. 
     // There is no need to deduce the quantum if the quantum is only one instruction.
-    if (quantum_enabled()) {
+    if (quantum_enabled() || icount_enabled()) {
         assert(quantum_start_insn != NULL);
         tcg_set_insn_param(quantum_start_insn, 1,
                             tcgv_i32_arg(tcg_constant_i32(db->num_insns)));

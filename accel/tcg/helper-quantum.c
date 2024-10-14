@@ -1,11 +1,13 @@
 // This file is added by Cyan for the quantum mechanism.
 
 #include "qemu/osdep.h"
+#include "qemu/typedefs.h"
 #include "qemu/units.h"
 #include "gdbstub/helpers.h"
 #include "exec/helper-proto.h"
 #include "cpu.h"
 #include "hw/core/cpu.h"
+#include "sysemu/cpu-timers.h"
 #include "sysemu/quantum.h"
 #include "qemu/plugin-cyan.h"
 
@@ -16,7 +18,6 @@ void HELPER(deduce_quantum)(CPUArchState *env) {
 
     // deduction.
     current_cpu->quantum_budget -= current_cpu->quantum_required;
-
 
     // increase the target cycle.
     uint64_t current_index = current_cpu->cpu_index;
@@ -54,6 +55,13 @@ void HELPER(deplete_quantum_budget)(CPUArchState *env) {
 }
 
 void HELPER(set_quantum_requirement_example)(CPUArchState *env, uint32_t requirement) {
-    assert(quantum_enabled());
+    assert(quantum_enabled() || icount_enabled());
     current_cpu->quantum_required = requirement;
+}
+
+void HELPER(increase_target_cycle)(CPUArchState *env) {
+    assert(icount_enabled());
+
+    uint64_t current_index = current_cpu->cpu_index;
+    cpu_virtual_time[current_index].vts += current_cpu->quantum_required * 100 / current_cpu->ipc;
 }

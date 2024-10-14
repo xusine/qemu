@@ -170,29 +170,54 @@ static int rr_cpu_count(void)
     return cpu_count;
 }
 
-static void load_ipc_table(uint64_t *table, uint64_t core_count, const char *filename) {
-    // Each line of the file contains the IPC of the core.
-    // And it should be an integer.
-    FILE *file = fopen(filename, "r");
-    if (!file) {
-        // If this file does not exist, we assume all cores have the same IPC 1.
-        for (int i = 0; i < core_count; i++) {
-            table[i] = 1;
-        }
+typedef struct core_meta_info_t {
+    uint64_t ipc;
+    uint64_t affinity_core_idx;
+} core_meta_info_t;
 
-        // print a log.
-        fprintf(stderr, "IPC file %s does not exist. Assume all cores have the same IPC 1.\n", filename);
-    } else {
-        char line[1024];
-        int i = 0;
+static core_meta_info_t core_info_table[256];
 
-        while (fgets(line, 1024, file)) {
-            table[i] = strtoull(line, NULL, 10);
-            i++;
-        }
-        fclose(file);
+static void rrtcg_initialize_core_info_table(const char *file_name) {
+    for(uint64_t i = 0; i < 256; ++i) {
+        core_info_table[i].ipc = 0;
+        core_info_table[i].affinity_core_idx = i;
     }
+
+    // Load the IPC from the file. Each line is a integer and suggests the IPC.
+    FILE *fp = fopen(file_name, "r");
+    if (!fp) {
+        if (!qemu_tcg_mttcg_enabled()) {
+            printf("IPC file (%s) is not found. It is needed under the round-robin mode\n", file_name);
+            exit(1);
+        } else {
+            return;
+        }
+        
+    }
+
+    char line[1024];
+    int core_id = 0;
+
+    // The first line is the header.
+    // The header is "ipc,affinity_core_idx"
+    // do a comparison with the header.
+    assert(fgets(line, 1024, fp) != NULL);
+    assert(strcmp(line, "ipc,affinity_core_idx\n") == 0);    
+
+
+    // Now, read every line and fill the structure.
+    while(fgets(line, 1024, fp) != NULL) {
+        char *token = strtok(line, ",");
+        core_info_table[core_id].ipc = atoi(token);
+        assert(core_info_table[core_id].ipc > 0 && "IPC should be greater than 0");
+        token = strtok(NULL, ",");
+        core_info_table[core_id].affinity_core_idx = atoi(token);
+        core_id += 1;
+    }
+
+    fclose(fp);
 }
+
 
 /*
  * In the single-threaded case each vCPU is simulated in turn. If
@@ -221,7 +246,9 @@ static void *rr_cpu_thread_fn(void *arg)
     cpu_thread_signal_created(cpu);
     qemu_guest_random_seed_thread_part2(cpu->random_seed);
 
-    uint64_t cpu_count = 0;
+    // Load the IPC table.
+    rrtcg_initialize_core_info_table("ipc.csv");
+
 
     /* wait for initial kick-off after machine start */
     while (first_cpu->stopped) {
@@ -229,15 +256,14 @@ static void *rr_cpu_thread_fn(void *arg)
 
         /* process any pending work */
         CPU_FOREACH(cpu) {
-            cpu_count += 1;
             current_cpu = cpu;
             qemu_wait_io_event_common(cpu);
+
+            // Set up the ipc value for this processor.
+            cpu->ipc = core_info_table[cpu->cpu_index].ipc;
         }
     }
 
-    // Load the IPC table.
-    uint64_t *ipc_table = g_new0(uint64_t, cpu_count);
-    load_ipc_table(ipc_table, cpu_count, "ipc.txt");
 
     rr_start_kick_timer();
 
@@ -288,6 +314,30 @@ static void *rr_cpu_thread_fn(void *arg)
             // The time is increased here to avoid problem.
             icount_increase(cpu_budget);
 
+            // SFind the maximum vtime and synchronize the time among all cores.
+            uint64_t max_vtime = 0;
+            for (int i = 0; i < rr_cpu_count(); i++) {
+                uint64_t vtime = cpu_virtual_time[i].vts;
+                if (vtime > max_vtime) {
+                    max_vtime = vtime;
+                }
+            }
+
+            // Synchronize the time.
+            for (int i = 0; i < rr_cpu_count(); i++) {
+                cpu_virtual_time[i].vts = max_vtime;
+            }
+
+            // Clean all core's quantum budget requirement.
+            // Is this necessary? (We need to check how the icount mode quits from the loop.)
+            for (int i = 0; i < rr_cpu_count(); i++) {
+                CPUState *cpu = first_cpu;
+                while (cpu) {
+                    cpu->quantum_required = 0;
+                    cpu = CPU_NEXT(cpu);
+                }
+            }
+
            cpu = first_cpu;
         }
 
@@ -305,7 +355,7 @@ static void *rr_cpu_thread_fn(void *arg)
 
                 qemu_mutex_unlock_iothread();
                 if (icount_enabled()) {
-                    icount_prepare_for_run(cpu, cpu_budget * ipc_table[cpu->cpu_index]);
+                    icount_prepare_for_run(cpu, cpu_budget * core_info_table[cpu->cpu_index].ipc);
                 }
                 r = tcg_cpus_exec(cpu);
                 if (icount_enabled()) {
@@ -355,8 +405,6 @@ static void *rr_cpu_thread_fn(void *arg)
 
     rcu_remove_force_rcu_notifier(&force_rcu);
     rcu_unregister_thread();
-
-    g_free(ipc_table);
 
     return NULL;
 }
