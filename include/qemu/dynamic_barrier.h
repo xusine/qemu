@@ -38,6 +38,8 @@ typedef struct {
     uint64_t __padding2__[7];
     uint64_t count;
     uint64_t __padding3__[7];
+    uint64_t stop_request;
+    uint64_t __padding4__[7];
     atomic_uint_fast32_t generation;
     uint64_t last_timestamp;
     uint64_t total_diff;

@@ -935,7 +935,7 @@ qemu_plugin_register_event_loop_poll_cb(qemu_plugin_event_loop_poll_cb_t cb);
  */
 CYAN_API bool qemu_plugin_is_icount_mode(void);
 
-CYAN_API typedef void (*qemu_plugin_periodic_check_cb_t)(
+CYAN_API typedef bool (*qemu_plugin_periodic_check_cb_t)(
     uint64_t passed_cycles);
 
 /**
@@ -943,6 +943,9 @@ CYAN_API typedef void (*qemu_plugin_periodic_check_cb_t)(
  * checking.
  *
  * @cb: function is called every time the periodic checking is triggered.
+ *
+ * When the function return trues, the VM stop request is sent, and all vCPUs
+ * will be paused. This is useful for taking the snapshot of the system.
  *
  * There are two scenario when the periodic checking is triggered:
  * - When icount mode is on, and the `icount_checking_period` is set to

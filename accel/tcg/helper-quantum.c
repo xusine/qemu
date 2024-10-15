@@ -22,6 +22,9 @@ void HELPER(deduce_quantum)(CPUArchState *env) {
     // increase the target cycle.
     uint64_t current_index = current_cpu->cpu_index;
     cpu_virtual_time[current_index].vts += current_cpu->quantum_required * 100 / current_cpu->ipc;
+
+    current_cpu->quantum_required = 0;
+
 }
 
 uint32_t HELPER(check_and_deduce_quantum)(CPUArchState *env) {
@@ -40,6 +43,8 @@ uint32_t HELPER(check_and_deduce_quantum)(CPUArchState *env) {
     // increase the target cycle.
     uint64_t current_index = current_cpu->cpu_index;
     cpu_virtual_time[current_index].vts += current_cpu->quantum_required * 100 / current_cpu->ipc;
+
+    current_cpu->quantum_required = 0;
     
     if (current_cpu->quantum_budget <= 0) {
         current_cpu->quantum_budget_depleted = 1;
@@ -64,4 +69,6 @@ void HELPER(increase_target_cycle)(CPUArchState *env) {
 
     uint64_t current_index = current_cpu->cpu_index;
     cpu_virtual_time[current_index].vts += current_cpu->quantum_required * 100 / current_cpu->ipc;
+
+    current_cpu->quantum_required = 0;
 }

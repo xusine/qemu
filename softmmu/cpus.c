@@ -465,14 +465,18 @@ uint64_t qemu_wait_io_event(CPUState *cpu, bool not_running_yet, uint32_t *curre
                 uint64_t current_host_time_after_io = get_current_timestamp_ns();
                 uint64_t sleep_time = current_host_time_after_io - current_host_time;
                 // we can clean the quantum budget here.
+                assert(sleep_time / 1000 <= cpu->quantum_budget + 1);
                 cpu->quantum_budget -= sleep_time / 1000;
+                
                 // increase the time as well.
-                cpu_virtual_time[cpu->cpu_index].vts += (sleep_time / 1000) * 100 / cpu->ipc;
+                // cpu_virtual_time[cpu->cpu_index].vts += (sleep_time / 1000) * 100 / cpu->ipc;
 
                 if (cpu->quantum_budget <= 0) {
                     cpu->quantum_budget = 0;
                     cpu->quantum_budget_depleted = 1;
                 }
+
+                break; // we need to break out in order to wait for the barrier.
             } else {
                 qemu_cond_wait(cpu->halt_cond, &qemu_global_mutex);
             }

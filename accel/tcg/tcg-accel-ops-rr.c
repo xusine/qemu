@@ -25,6 +25,7 @@
 
 #include "qemu/osdep.h"
 #include "qemu/lockable.h"
+#include "sysemu/runstate.h"
 #include "sysemu/tcg.h"
 #include "sysemu/replay.h"
 #include "sysemu/cpu-timers.h"
@@ -247,7 +248,7 @@ static void *rr_cpu_thread_fn(void *arg)
     qemu_guest_random_seed_thread_part2(cpu->random_seed);
 
     // Load the IPC table.
-    rrtcg_initialize_core_info_table("ipc.csv");
+    rrtcg_initialize_core_info_table("core_info.csv");
 
 
     /* wait for initial kick-off after machine start */
@@ -261,6 +262,9 @@ static void *rr_cpu_thread_fn(void *arg)
 
             // Set up the ipc value for this processor.
             cpu->ipc = core_info_table[cpu->cpu_index].ipc;
+
+            // No quantum is required at the beginning.
+            cpu->quantum_required = 0;
         }
     }
 
@@ -307,12 +311,28 @@ static void *rr_cpu_thread_fn(void *arg)
         if (!cpu) {
             cycle += cpu_budget;
             if (icount_checking_period != 0 && cycle >= next_check_threshold) {
-                if (cyan_periodic_check_cb) cyan_periodic_check_cb(icount_checking_period);
+                if (cyan_periodic_check_cb) {
+                    if(cyan_periodic_check_cb(icount_checking_period)) {
+                        vm_stop(RUN_STATE_SAVE_VM);
+                    };
+                }
                 next_check_threshold += icount_checking_period;
             }
 
             // The time is increased here to avoid problem.
             icount_increase(cpu_budget);
+
+            // round the left quantum budget.
+            // Clean all core's quantum budget requirement.
+            // Is this necessary? (We need to check how the icount mode quits from the loop.)
+            for (int i = 0; i < rr_cpu_count(); i++) {
+                CPUState *cpu = first_cpu;
+                while (cpu) {
+                    cpu_virtual_time[cpu->cpu_index].vts += cpu->quantum_required * 100 / cpu->ipc;
+                    cpu->quantum_required = 0;
+                    cpu = CPU_NEXT(cpu);
+                }
+            }
 
             // SFind the maximum vtime and synchronize the time among all cores.
             uint64_t max_vtime = 0;
@@ -328,15 +348,6 @@ static void *rr_cpu_thread_fn(void *arg)
                 cpu_virtual_time[i].vts = max_vtime;
             }
 
-            // Clean all core's quantum budget requirement.
-            // Is this necessary? (We need to check how the icount mode quits from the loop.)
-            for (int i = 0; i < rr_cpu_count(); i++) {
-                CPUState *cpu = first_cpu;
-                while (cpu) {
-                    cpu->quantum_required = 0;
-                    cpu = CPU_NEXT(cpu);
-                }
-            }
 
            cpu = first_cpu;
         }

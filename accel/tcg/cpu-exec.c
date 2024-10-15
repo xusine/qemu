@@ -18,6 +18,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/plugin-cyan.h"
 #include "qemu/qemu-print.h"
 #include "qapi/error.h"
 #include "qapi/type-helpers.h"
@@ -565,6 +566,7 @@ static void cpu_exec_longjmp_cleanup(CPUState *cpu)
 
     // Also clean the quantum requirement, considering that the instruction is not directly finished. 
     // I know this is not a best practice, but we have to do so to avoid livelock...
+    cpu_virtual_time[cpu->cpu_index].vts += cpu->quantum_required * 100 / cpu->ipc;
     cpu->quantum_required = 0;
 }
 
