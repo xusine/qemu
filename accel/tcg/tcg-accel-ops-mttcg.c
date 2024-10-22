@@ -26,6 +26,7 @@
 #include "qemu/osdep.h"
 #include "sysemu/tcg.h"
 #include "qemu/plugin-cyan.h"
+#include "qemu/timer.h"
 #include "qemu/typedefs.h"
 #include "sysemu/replay.h"
 #include "sysemu/cpu-timers.h"
@@ -170,7 +171,6 @@ static void dump_log(CPUState *cpu, per_cpu_host_time_breakdown_t *statistics) {
 
     fclose(fp);
 }
-
 /*
  * In the multi-threaded case each vCPU has its own thread. The TLS
  * variable current_cpu can be used deep in the code to find the
@@ -233,6 +233,7 @@ static void *mttcg_cpu_thread_fn(void *arg)
                 cpu->enter_idle_time = 0;
                 cpu->target_cycle_on_idle = 0;
                 cpu->target_cycle_on_instruction = 0;
+                cpu->private_timer_triggered = 0;
 
                 // register the current thread to the barrier.
                 if (affiliated_with_quantum) {
@@ -240,6 +241,9 @@ static void *mttcg_cpu_thread_fn(void *arg)
 
                     cpu->quantum_generation = 0;
                     cpu->quantum_budget = quantum_size * cpu->ipc;
+
+                    qemu_local_timer_notify_cb(cpu, QEMU_CLOCK_VIRTUAL);
+
                     cpu->quantum_required = 0;
                     cpu->quantum_budget_depleted = 0;
                     qemu_log("Core%u Quantum Count: %lu cycles, %lu instructions \n", cpu->cpu_index, quantum_size, quantum_size * cpu->ipc);
@@ -254,16 +258,26 @@ static void *mttcg_cpu_thread_fn(void *arg)
             r = tcg_cpus_exec(cpu);
             // check the quantum budget and sync before doing I/O operation.
             if (cpu->quantum_budget_depleted) {
-                cpu->quantum_budget_depleted = false;
                 if (affiliated_with_quantum) {
-                    while (cpu->quantum_budget <= 0) {
-                        uint64_t old_generation = cpu->quantum_generation;
-                        uint64_t new_generation = dynamic_barrier_polling_wait(&quantum_barrier, cpu->quantum_generation);
-            
-                        
-                        assert(new_generation == old_generation + 1);
-                        cpu->quantum_budget += quantum_size * cpu->ipc;
-                        cpu->quantum_generation = new_generation;
+                    bool is_quantum_budget_depleted =cpu->quantum_budget_depleted & 1;
+                    bool is_deadline_budeget_depleted = cpu->quantum_budget_depleted & 2;
+
+                    if (is_deadline_budeget_depleted) {
+                        // we need to run the timer list here.
+                        local_timerlist_run_timers(cpu->local_timerlist, cpu_virtual_time[cpu->cpu_index].vts / 100);
+                        qemu_local_timer_notify_cb(cpu, QEMU_CLOCK_VIRTUAL);
+                    }
+
+                    if (is_quantum_budget_depleted) {
+                        while (cpu->quantum_budget <= 0) {
+                            uint64_t old_generation = cpu->quantum_generation;
+                            uint64_t new_generation = dynamic_barrier_polling_wait(&quantum_barrier, cpu->quantum_generation);
+                
+                            
+                            assert(new_generation == old_generation + 1);
+                            cpu->quantum_budget += quantum_size * cpu->ipc;
+                            cpu->quantum_generation = new_generation;
+                        }
                     }
                     
                     if (r == EXCP_QUANTUM) {
@@ -272,6 +286,7 @@ static void *mttcg_cpu_thread_fn(void *arg)
                 } else {
                     assert(false);
                 }
+                cpu->quantum_budget_depleted = 0;
             }
             qemu_mutex_lock_iothread();
             switch (r) {            
@@ -317,8 +332,16 @@ static void *mttcg_cpu_thread_fn(void *arg)
         // it is possible that the quantum budget is depleted due to the idle state.
         if (affiliated_with_quantum && cpu->quantum_budget_depleted) {
             qemu_mutex_unlock_iothread();
-            cpu->quantum_budget_depleted = false;
-            if (affiliated_with_quantum) {
+            bool is_quantum_budget_depleted = cpu->quantum_budget_depleted & 1;
+            bool is_deadline_budeget_depleted = cpu->quantum_budget_depleted & 2;
+
+            if (is_deadline_budeget_depleted) {
+                // we need to run the timer list here.
+                local_timerlist_run_timers(cpu->local_timerlist, cpu_virtual_time[cpu->cpu_index].vts / 100);
+                qemu_local_timer_notify_cb(cpu, QEMU_CLOCK_VIRTUAL);
+            }
+
+            if (is_quantum_budget_depleted) {
                 while (cpu->quantum_budget <= 0) {
                     uint64_t old_generation = cpu->quantum_generation;
                     uint64_t new_generation = dynamic_barrier_polling_wait(&quantum_barrier, cpu->quantum_generation);
@@ -328,9 +351,10 @@ static void *mttcg_cpu_thread_fn(void *arg)
                     cpu->quantum_budget += quantum_size * cpu->ipc;
                     cpu->quantum_generation = new_generation;
                 }
-            } else {
-                assert(false);
             }
+
+            cpu->quantum_budget_depleted = 0;
+            
             qemu_mutex_lock_iothread();
         }
     } while (!cpu->unplug || cpu_can_run(cpu));

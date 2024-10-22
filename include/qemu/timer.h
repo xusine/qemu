@@ -264,6 +264,8 @@ bool qemu_clock_run_all_timers(void);
 QEMUTimerList *timerlist_new(QEMUClockType type,
                              QEMUTimerListNotifyCB *cb, void *opaque);
 
+QEMUTimerList *timerlist_new_local(QEMUTimerListNotifyCB *cb, void *opaque);
+
 /**
  * timerlist_free:
  * @timer_list: the timer list to free
@@ -310,6 +312,7 @@ bool timerlist_expired(QEMUTimerList *timer_list);
  * timer expires -1 if none
  */
 int64_t timerlist_deadline_ns(QEMUTimerList *timer_list);
+int64_t timerlist_deadline_explict_current_time_ns(QEMUTimerList *timer_list, int64_t current_time);
 
 /**
  * timerlist_get_clock:
@@ -331,6 +334,7 @@ QEMUClockType timerlist_get_clock(QEMUTimerList *timer_list);
  * Returns: true if any timer expired
  */
 bool timerlist_run_timers(QEMUTimerList *timer_list);
+bool local_timerlist_run_timers(QEMUTimerList *timer_list, int64_t current_time);
 
 /**
  * timerlist_notify:
@@ -339,6 +343,17 @@ bool timerlist_run_timers(QEMUTimerList *timer_list);
  * call the notifier callback associated with the timer list.
  */
 void timerlist_notify(QEMUTimerList *timer_list);
+
+
+/**
+ * timerlist_reschedule:
+ * @timer_list: the timer list to use
+ * @time_adjustment: the adjustment of the time.    
+ * Positive value means the time is advanced, negative value means the time is delayed.
+ * 
+ * Reschedule the timer list using a given time adjustment.
+ */
+void timerlist_reschedule(QEMUTimerList *timer_list, int64_t time_adjustment); 
 
 /*
  * QEMUTimerListGroup
@@ -542,6 +557,30 @@ static inline QEMUTimer *timer_new(QEMUClockType type, int scale,
                                    QEMUTimerCB *cb, void *opaque)
 {
     return timer_new_full(NULL, type, scale, 0, cb, opaque);
+}
+
+/**
+ * local_timer_new:
+ * @core_idx: Which core's private timer list to use
+ * @scale: the scale value for the timer
+ * @cb: the callback to be called when the timer expires
+ * @opaque: the opaque pointer to be passed to the callback
+ *
+ * Create a new timer with the given scale,
+ * and associate it with the default timer list for the clock type @type.
+ * See timer_new_full for details.
+ *
+ * Returns: a pointer to the timer
+ */
+static inline QEMUTimer *local_timer_new(QEMUTimerList *timer_list, int scale, QEMUTimerCB *cb, void *opaque)
+{
+    QEMUTimer *ts = g_new0(QEMUTimer, 1);
+    ts->timer_list = timer_list;
+    ts->cb = cb;
+    ts->opaque = opaque;
+    ts->scale = scale;
+    ts->expire_time = -1;
+    return ts;
 }
 
 /**

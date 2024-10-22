@@ -31,6 +31,7 @@
 #include "qemu/queue.h"
 #include "qemu/thread.h"
 #include "qemu/plugin-event.h"
+#include "qemu/timer.h"
 #include "qom/object.h"
 
 typedef int (*WriteCoreDumpFunction)(const void *buf, size_t size,
@@ -453,9 +454,16 @@ struct CPUState {
     // State for deduction of the quantum.
     uint64_t ipc; // instruction per quantum unit . 0 means this core is not managed by the quantum.
     int64_t quantum_budget;
+
+    QEMUTimerList *local_timerlist;
+    int64_t deadline_budget;
+    int64_t deadline_enabled;
+    
     uint64_t quantum_generation;
     uint64_t quantum_required;
-    int quantum_budget_depleted;
+    int quantum_budget_depleted; // 0: not depleted, Bit[0]: depleted due to the quantum budget; Bit[1] depleted due to the deadline.
+
+    uint64_t private_timer_triggered;
 };
 
 typedef QTAILQ_HEAD(CPUTailQ, CPUState) CPUTailQ;

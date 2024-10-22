@@ -460,20 +460,38 @@ uint64_t qemu_wait_io_event(CPUState *cpu, bool not_running_yet, uint32_t *curre
             if (affiliated_with_quantum) {
                 // OK, we assume 1M instruction / second speed when we are sleeping. 
                 // This number can be profiled more precisely later, and it can be also read from the excel sheet.
+
+                uint64_t sleep_budget = cpu->quantum_budget / 1000;
+                if (cpu->deadline_enabled) {
+                    sleep_budget = MIN(sleep_budget, cpu->deadline_budget / 1000);
+                }
+
+                // qemu_log("CPU %d will sleep for %lu ms\n", cpu->cpu_index, sleep_budget);
+
                 uint64_t current_host_time = get_current_timestamp_ns();
-                qemu_cond_timedwait(cpu->halt_cond, &qemu_global_mutex, cpu->quantum_budget / 1000 + 1);
+                qemu_cond_timedwait(cpu->halt_cond, &qemu_global_mutex, sleep_budget);
                 uint64_t current_host_time_after_io = get_current_timestamp_ns();
                 uint64_t sleep_time = current_host_time_after_io - current_host_time;
                 // we can clean the quantum budget here.
-                assert(sleep_time / 1000 <= cpu->quantum_budget + 1);
+                // qemu_log("CPU %d slept for %lu ms\n", cpu->cpu_index, sleep_time / 1000000);
+                // assert(sleep_time / 1000000 <= sleep_budget + 1);
                 cpu->quantum_budget -= sleep_time / 1000;
                 
-                // increase the time as well.
-                // cpu_virtual_time[cpu->cpu_index].vts += (sleep_time / 1000) * 100 / cpu->ipc;
+                if (cpu->deadline_enabled) {
+                    // reduce the deadline as well.
+                    cpu->deadline_budget -= sleep_time / 1000;
+
+                    if (cpu->deadline_budget <= 0) {
+                        cpu->deadline_budget = 0;
+                        cpu->quantum_budget_depleted |= 2;
+                    }
+                }
+
+                cpu_virtual_time[cpu->cpu_index].vts += (sleep_time / 1000) * 100 / cpu->ipc;
 
                 if (cpu->quantum_budget <= 0) {
                     cpu->quantum_budget = 0;
-                    cpu->quantum_budget_depleted = 1;
+                    cpu->quantum_budget_depleted |= 1;
                 }
 
                 break; // we need to break out in order to wait for the barrier.

@@ -18,6 +18,9 @@ void HELPER(deduce_quantum)(CPUArchState *env) {
 
     // deduction.
     current_cpu->quantum_budget -= current_cpu->quantum_required;
+    if (current_cpu->deadline_enabled) {
+        current_cpu->deadline_budget -= current_cpu->quantum_required;
+    }
 
     // increase the target cycle.
     uint64_t current_index = current_cpu->cpu_index;
@@ -39,6 +42,9 @@ uint32_t HELPER(check_and_deduce_quantum)(CPUArchState *env) {
 
     // deduction.
     current_cpu->quantum_budget -= current_cpu->quantum_required;
+    if (current_cpu->deadline_enabled) {
+        current_cpu->deadline_budget -= current_cpu->quantum_required;
+    }
 
     // increase the target cycle.
     uint64_t current_index = current_cpu->cpu_index;
@@ -47,9 +53,17 @@ uint32_t HELPER(check_and_deduce_quantum)(CPUArchState *env) {
     current_cpu->quantum_required = 0;
     
     if (current_cpu->quantum_budget <= 0) {
-        current_cpu->quantum_budget_depleted = 1;
+        current_cpu->quantum_budget_depleted |= 1;
+    }
+
+    if (current_cpu->deadline_enabled && current_cpu->deadline_budget <= 0) {
+        current_cpu->quantum_budget_depleted |= 2;
+    }
+
+    if (current_cpu->quantum_budget_depleted) {
         return true;
     }
+
     return false;
 }
 

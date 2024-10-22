@@ -239,6 +239,7 @@ static void tlb_mmu_flush_locked(CPUTLBDesc *desc, CPUTLBDescFast *fast)
     memset(desc->vtable, -1, sizeof(desc->vtable));
 }
 
+// TODO: Add hook. 
 static void tlb_flush_one_mmuidx_locked(CPUArchState *env, int mmu_idx,
                                         int64_t now)
 {
@@ -518,6 +519,7 @@ static void tlb_flush_page_locked(CPUArchState *env, int midx, vaddr page)
  * Helper for tlb_flush_page_by_mmuidx and friends, flush one page
  * at @addr from the tlbs indicated by @idxmap from @cpu.
  */
+// TODO: Add hook to flush one. 
 static void tlb_flush_page_by_mmuidx_async_0(CPUState *cpu,
                                              vaddr addr,
                                              uint16_t idxmap)

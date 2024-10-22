@@ -28,10 +28,12 @@
 #include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "qemu/plugin-cyan.h"
+#include "qemu/timer.h"
 #include "sysemu/cpus.h"
 #include "qemu/main-loop.h"
 #include "qemu/option.h"
 #include "qemu/seqlock.h"
+#include "sysemu/quantum.h"
 #include "sysemu/replay.h"
 #include "sysemu/runstate.h"
 #include "hw/core/cpu.h"
@@ -164,6 +166,25 @@ void cpu_disable_ticks(void)
                          &timers_state.vm_clock_lock);
 }
 
+void cpu_set_clock_offset(int64_t new_offset) 
+{
+    // Only when the tick is disabled.
+    seqlock_write_lock(&timers_state.vm_clock_seqlock,
+                       &timers_state.vm_clock_lock);
+
+    assert(!timers_state.cpu_ticks_enabled);
+
+    // TODO: reschedule all events in the virtual timer list.
+    QEMUTimerList *timer_list = qemu_clock_get_main_loop_timerlist(QEMU_CLOCK_VIRTUAL);
+    timerlist_reschedule(timer_list, new_offset - timers_state.cpu_clock_offset);
+
+    timers_state.cpu_clock_offset = new_offset;
+    timers_state.virtual_clock_snapshot = new_offset;
+
+    seqlock_write_unlock(&timers_state.vm_clock_seqlock,
+                         &timers_state.vm_clock_lock);
+}
+
 static bool icount_state_needed(void *opaque)
 {
     return false;
@@ -247,10 +268,24 @@ static const VMStateDescription icount_vmstate_timers = {
     }
 };
 
+static int timers_state_post_load(void *opaque, int version_id)
+{
+    TimersState *s = opaque;
+    if (quantum_enabled()) {
+        // set the local target time accordingly. 
+        for (int core_id = 0; core_id < 256; ++core_id) {
+            cpu_virtual_time[core_id].vts = s->cpu_clock_offset * 100;
+        }
+    }
+
+    return 0;
+}
+
 static const VMStateDescription vmstate_timers = {
     .name = "timer",
     .version_id = 2,
     .minimum_version_id = 1,
+    .post_load = timers_state_post_load, // A function here to update the time.
     .fields = (VMStateField[]) {
         VMSTATE_INT64(cpu_ticks_offset, TimersState),
         VMSTATE_UNUSED(8),
@@ -291,6 +326,31 @@ void qemu_timer_notify_cb(void *opaque, QEMUClockType type)
          * need to do anything.
          */
         async_run_on_cpu(first_cpu, do_nothing, RUN_ON_CPU_NULL);
+    }
+}
+
+void qemu_local_timer_notify_cb(void *opaque, QEMUClockType type){
+    assert(quantum_enabled());
+    CPUState *cs = opaque;
+    // assert(cs == current_cpu); This is not true when the timer is loaded from a `
+
+    // recalculate the deadline and set the budget.
+    int64_t local_deadline = timerlist_deadline_explict_current_time_ns(
+        cs->local_timerlist,
+        cpu_virtual_time[cs->cpu_index].vts / 100
+    );
+
+    if (local_deadline >= 0) {
+        cs->deadline_budget = local_deadline * cs->ipc;
+        if (cs->deadline_budget < 0) {
+            // this is an overflow. We should turn off the deadline.
+            cs->deadline_enabled = false;
+        } else {
+            cs->deadline_enabled = true;
+        }
+
+    } else {
+        cs->deadline_enabled = false;
     }
 }
 

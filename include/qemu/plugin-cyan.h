@@ -7,7 +7,9 @@
 #ifndef QEMU_PLUGIN_CYAN_H
 #define QEMU_PLUGIN_CYAN_H
 
+#include "qemu/osdep.h"
 #include "qemu/qemu-plugin.h"
+#include "qemu/timer.h"
 
 // This file keeps the following callbacks for the plugin system:
 // - Callback for virtual time calculation.
@@ -37,7 +39,8 @@ extern qemu_plugin_periodic_check_cb_t cyan_periodic_check_cb;
 
 struct cpu_virtual_time_t {
   uint64_t vts;
-  uint64_t __padding[7];
+  QEMUTimerList *managed_timers;
+  uint64_t __padding[6];
 };
 
 extern struct cpu_virtual_time_t cpu_virtual_time[256];

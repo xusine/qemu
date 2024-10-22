@@ -20,10 +20,12 @@
 
 #include "qemu/histogram.h"
 #include "qemu/osdep.h"
+#include "qemu/plugin-cyan.h"
 #include "qemu/qemu-print.h"
 #include "qemu/timer.h"
 #include "qemu/log.h"
 #include "exec/page-vary.h"
+#include "sysemu/cpu-timers.h"
 #include "target/arm/idau.h"
 #include "qemu/module.h"
 #include "qapi/error.h"
@@ -1682,16 +1684,34 @@ static void arm_cpu_realizefn(DeviceState *dev, Error **errp)
             scale = GTIMER_SCALE;
         }
 
-        cpu->gt_timer[GTIMER_PHYS] = timer_new(QEMU_CLOCK_VIRTUAL, scale,
+        // create the timer list here.
+
+        if (quantum_enabled()) {
+            cs->local_timerlist = timerlist_new_local(qemu_local_timer_notify_cb, cs);
+            cpu_virtual_time[cs->cpu_index].managed_timers = cs->local_timerlist;
+
+            cpu->gt_timer[GTIMER_PHYS] = local_timer_new(cs->local_timerlist, scale,
                                                arm_gt_ptimer_cb, cpu);
-        cpu->gt_timer[GTIMER_VIRT] = timer_new(QEMU_CLOCK_VIRTUAL, scale,
-                                               arm_gt_vtimer_cb, cpu);
-        cpu->gt_timer[GTIMER_HYP] = timer_new(QEMU_CLOCK_VIRTUAL, scale,
-                                              arm_gt_htimer_cb, cpu);
-        cpu->gt_timer[GTIMER_SEC] = timer_new(QEMU_CLOCK_VIRTUAL, scale,
-                                              arm_gt_stimer_cb, cpu);
-        cpu->gt_timer[GTIMER_HYPVIRT] = timer_new(QEMU_CLOCK_VIRTUAL, scale,
-                                                  arm_gt_hvtimer_cb, cpu);
+            cpu->gt_timer[GTIMER_VIRT] = local_timer_new(cs->local_timerlist, scale,
+                                                arm_gt_vtimer_cb, cpu);
+            cpu->gt_timer[GTIMER_HYP] = local_timer_new(cs->local_timerlist, scale,
+                                                arm_gt_htimer_cb, cpu);
+            cpu->gt_timer[GTIMER_SEC] = local_timer_new(cs->local_timerlist, scale,
+                                                arm_gt_stimer_cb, cpu);
+            cpu->gt_timer[GTIMER_HYPVIRT] = local_timer_new(cs->local_timerlist, scale,
+                                                    arm_gt_hvtimer_cb, cpu);
+        } else {
+            cpu->gt_timer[GTIMER_PHYS] = timer_new(QEMU_CLOCK_VIRTUAL, scale,
+                                                   arm_gt_ptimer_cb, cpu);
+            cpu->gt_timer[GTIMER_VIRT] = timer_new(QEMU_CLOCK_VIRTUAL, scale,
+                                                   arm_gt_vtimer_cb, cpu);
+            cpu->gt_timer[GTIMER_HYP] = timer_new(QEMU_CLOCK_VIRTUAL, scale,
+                                                  arm_gt_htimer_cb, cpu);
+            cpu->gt_timer[GTIMER_SEC] = timer_new(QEMU_CLOCK_VIRTUAL, scale,
+                                                  arm_gt_stimer_cb, cpu);
+            cpu->gt_timer[GTIMER_HYPVIRT] = timer_new(QEMU_CLOCK_VIRTUAL, scale,
+                                                      arm_gt_hvtimer_cb, cpu);
+        }
     }
 #endif
 

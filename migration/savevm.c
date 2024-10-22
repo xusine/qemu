@@ -37,6 +37,7 @@
 #include "migration/register.h"
 #include "migration/global_state.h"
 #include "migration/channel-block.h"
+#include "qemu/timer.h"
 #include "ram.h"
 #include "qemu-file.h"
 #include "savevm.h"
@@ -47,6 +48,7 @@
 #include "qapi/qapi-builtin-visit.h"
 #include "qapi/qmp/qerror.h"
 #include "qemu/error-report.h"
+#include "sysemu/cpu-timers.h"
 #include "sysemu/cpus.h"
 #include "exec/memory.h"
 #include "exec/target_page.h"
@@ -2988,6 +2990,36 @@ bool save_snapshot(const char *name, bool overwrite, const char *vmstate,
 
     global_state_store();
     vm_stop(RUN_STATE_SAVE_VM);
+
+    // Sync all cores' timers before saving snapshot.
+    // Get the maximum time.
+    int64_t max_time = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+    for (int i = 0; i < 256; ++i) {
+        if (cpu_virtual_time[i].managed_timers == NULL) {
+            break;
+        }
+        
+        uint64_t local_vtime = cpu_virtual_time[i].vts;
+        
+        if (local_vtime > max_time) {
+            max_time = local_vtime;
+        }
+    }
+
+    // Set the maximum time to all cores and the virtual clock.
+    for (int i = 0; i < 256; i++) {
+        if (cpu_virtual_time[i].managed_timers == NULL) {
+            break;
+        }
+
+        assert(cpu_virtual_time[i].vts <= max_time);
+
+        // timerlist_reschedule(cpu_virtual_time[i].managed_timers, max_time - cpu_virtual_time[i].vts);
+        cpu_virtual_time[i].vts = max_time;
+    }
+
+    // set the virtual clock to the maximum time.
+    cpu_set_clock_offset(max_time);
 
     bdrv_drain_all_begin();
 

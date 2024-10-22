@@ -74,6 +74,8 @@ void cpu_enable_ticks(void);
 /* Caller must hold BQL */
 void cpu_disable_ticks(void);
 
+void cpu_set_clock_offset(int64_t offset) ;
+
 /*
  * return the time elapsed in VM between vm_start and vm_stop.
  * cpu_get_ticks() uses units of the host CPU cycle counter.
@@ -98,6 +100,7 @@ int64_t cpu_get_snapshoted_vm_clock(void);
 bool cpu_is_tick_enabled(void);
 
 void qemu_timer_notify_cb(void *opaque, QEMUClockType type);
+void qemu_local_timer_notify_cb(void *opaque, QEMUClockType type);
 
 /* get the VIRTUAL clock and VM elapsed ticks via the cpus accel interface */
 int64_t cpus_get_virtual_clock(void);

@@ -5,6 +5,7 @@
 #include <unistd.h>
 
 #include "qemu/osdep.h"
+#include "qemu/timer.h"
 #include "sysemu/cpus.h"
 #include "sysemu/quantum.h"
 #include "qemu/plugin-cyan.h"
@@ -193,6 +194,10 @@ uint32_t dynamic_barrier_polling_wait(dynamic_barrier_polling_t *barrier, uint32
         // Find the maximum vtime.
         uint64_t max_vtime = 0;
         for (int i = 0; i < 256; i++) {
+            if (cpu_virtual_time[i].managed_timers == NULL) {
+                break;
+            }
+            
             uint64_t vtime = cpu_virtual_time[i].vts;
             if (vtime > max_vtime) {
                 max_vtime = vtime;
@@ -203,7 +208,7 @@ uint32_t dynamic_barrier_polling_wait(dynamic_barrier_polling_t *barrier, uint32
         for (int i = 0; i < 256; i++) {
             assert(cpu_virtual_time[i].vts <= max_vtime);
 
-            // timerlist_reschedule(cpu_virtual_time[i].managed_timers, max_vtime - cpu_virtual_time[i].vts);
+            timerlist_reschedule(cpu_virtual_time[i].managed_timers, max_vtime - cpu_virtual_time[i].vts);
             cpu_virtual_time[i].vts = max_vtime;
         }
 

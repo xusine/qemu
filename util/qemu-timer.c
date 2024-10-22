@@ -110,6 +110,16 @@ QEMUTimerList *timerlist_new(QEMUClockType type,
     return timer_list;
 }
 
+QEMUTimerList *timerlist_new_local(QEMUTimerListNotifyCB *cb, void *opaque) {
+    QEMUTimerList *timer_list = g_new0(QEMUTimerList, 1);
+    qemu_event_init(&timer_list->timers_done_ev, true);
+    timer_list->clock = NULL;
+    qemu_mutex_init(&timer_list->active_timers_lock);
+    timer_list->notify_cb = cb;
+    timer_list->notify_opaque = opaque;
+    return timer_list;
+}
+
 void timerlist_free(QEMUTimerList *timer_list)
 {
     assert(!timerlist_has_timers(timer_list));
@@ -209,6 +219,36 @@ bool qemu_clock_expired(QEMUClockType type)
  * as we know the result is always positive.
  */
 
+int64_t timerlist_deadline_explict_current_time_ns(QEMUTimerList *timer_list, int64_t current_time)
+{
+    int64_t delta;
+    int64_t expire_time;
+
+    if (!qatomic_read(&timer_list->active_timers)) {
+        return -1;
+    }
+
+    /* The active timers list may be modified before the caller uses our return
+     * value but ->notify_cb() is called when the deadline changes.  Therefore
+     * the caller should notice the change and there is no race condition.
+     */
+    WITH_QEMU_LOCK_GUARD(&timer_list->active_timers_lock) {
+        if (!timer_list->active_timers) {
+            return -1;
+        }
+        expire_time = timer_list->active_timers->expire_time;
+    }
+
+    // delta = expire_time - qemu_clock_get_ns(timer_list->clock->type);
+    delta = expire_time - current_time;
+
+    if (delta <= 0) {
+        return 0;
+    }
+
+    return delta;
+}
+
 int64_t timerlist_deadline_ns(QEMUTimerList *timer_list)
 {
     int64_t delta;
@@ -299,10 +339,29 @@ QEMUTimerList *qemu_clock_get_main_loop_timerlist(QEMUClockType type)
 void timerlist_notify(QEMUTimerList *timer_list)
 {
     if (timer_list->notify_cb) {
-        timer_list->notify_cb(timer_list->notify_opaque, timer_list->clock->type);
+        if (timer_list->clock == NULL) {
+            timer_list->notify_cb(timer_list->notify_opaque, QEMU_CLOCK_VIRTUAL);
+        } else {
+            timer_list->notify_cb(timer_list->notify_opaque, timer_list->clock->type);
+        }
     } else {
         qemu_notify_event();
     }
+}
+
+void timerlist_reschedule(QEMUTimerList *timer_list, int64_t time_adjustment){
+    // Adjust the expire time of all timers in the list
+    QEMUTimer *ts;
+    int64_t expire_time;
+    qemu_mutex_lock(&timer_list->active_timers_lock);
+    ts = timer_list->active_timers;
+    while (ts) {
+        expire_time = ts->expire_time;
+        expire_time += time_adjustment;
+        ts->expire_time = expire_time;
+        ts = ts->next;
+    }
+    qemu_mutex_unlock(&timer_list->active_timers_lock);
 }
 
 /* Transition function to convert a nanosecond timeout to ms
@@ -582,6 +641,54 @@ bool timerlist_run_timers(QEMUTimerList *timer_list)
 
 out:
     qemu_event_set(&timer_list->timers_done_ev);
+    return progress;
+}
+
+bool local_timerlist_run_timers(QEMUTimerList *timer_list, int64_t current_time) {
+    QEMUTimer *ts;
+    bool progress = false;
+    QEMUTimerCB *cb;
+    void *opaque;
+
+    if (!qatomic_read(&timer_list->active_timers)) {
+        return false;
+    }
+
+    /*
+     * Extract expired timers from active timers list and process them.
+     *
+     * In rr mode we need "filtered" checkpointing for virtual clock.  The
+     * checkpoint must be recorded/replayed before processing any non-EXTERNAL timer,
+     * and that must only be done once since the clock value stays the same. Because
+     * non-EXTERNAL timers may appear in the timers list while it being processed,
+     * the checkpoint can be issued at a time until no timers are left and we are
+     * done".
+     */
+    qemu_mutex_lock(&timer_list->active_timers_lock);
+    while ((ts = timer_list->active_timers)) {
+        if (!timer_expired_ns(ts, current_time)) {
+            /* No expired timers left.  The checkpoint can be skipped
+             * if no timers fired or they were all external.
+             */
+            break;
+        }
+
+        /* remove timer from the list before calling the callback */
+        timer_list->active_timers = ts->next;
+        ts->next = NULL;
+        ts->expire_time = -1;
+        cb = ts->cb;
+        opaque = ts->opaque;
+
+        /* run the callback (the timer list can be modified) */
+        qemu_mutex_unlock(&timer_list->active_timers_lock);
+        cb(opaque);
+        qemu_mutex_lock(&timer_list->active_timers_lock);
+
+        progress = true;
+    }
+    qemu_mutex_unlock(&timer_list->active_timers_lock);
+
     return progress;
 }
 

@@ -8,6 +8,7 @@
 #include <inttypes.h>
 #include <stdio.h>
 #include <glib.h>
+#include <pthread.h>
 
 #include <qemu-plugin.h>
 
@@ -112,6 +113,9 @@ static uint64_t l1_dmisses;
 
 static uint64_t l2_mem_accesses;
 static uint64_t l2_misses;
+
+
+static uint64_t instruction_count[128 * 8] = {0};
 
 static int pow_of_two(int num)
 {
@@ -388,6 +392,12 @@ static bool access_cache(Cache *cache, uint64_t addr)
 static void vcpu_mem_access(unsigned int vcpu_index, qemu_plugin_meminfo_t info,
                             uint64_t vaddr, void *userdata)
 {
+    
+    if (vcpu_index != 0) {
+        return;
+    }
+    
+
     uint64_t effective_addr;
     struct qemu_plugin_hwaddr *hwaddr;
     int cache_idx;
@@ -429,37 +439,44 @@ static void vcpu_mem_access(unsigned int vcpu_index, qemu_plugin_meminfo_t info,
 
 static void vcpu_insn_exec(unsigned int vcpu_index, void *userdata)
 {
-    uint64_t insn_addr;
-    InsnData *insn;
-    int cache_idx;
-    bool hit_in_l1;
 
-    insn_addr = ((InsnData *) userdata)->addr;
-
-    cache_idx = vcpu_index % cores;
-    g_mutex_lock(&l1_icache_locks[cache_idx]);
-    hit_in_l1 = access_cache(l1_icaches[cache_idx], insn_addr);
-    if (!hit_in_l1) {
-        insn = userdata;
-        __atomic_fetch_add(&insn->l1_imisses, 1, __ATOMIC_SEQ_CST);
-        l1_icaches[cache_idx]->misses++;
-    }
-    l1_icaches[cache_idx]->accesses++;
-    g_mutex_unlock(&l1_icache_locks[cache_idx]);
-
-    if (hit_in_l1 || !use_l2) {
-        /* No need to access L2 */
+    if (vcpu_index != 0) {
         return;
     }
+    
+    // uint64_t insn_addr;
+    // InsnData *insn;
+    // int cache_idx;
+    // bool hit_in_l1;
 
-    g_mutex_lock(&l2_ucache_locks[cache_idx]);
-    if (!access_cache(l2_ucaches[cache_idx], insn_addr)) {
-        insn = userdata;
-        __atomic_fetch_add(&insn->l2_misses, 1, __ATOMIC_SEQ_CST);
-        l2_ucaches[cache_idx]->misses++;
-    }
-    l2_ucaches[cache_idx]->accesses++;
-    g_mutex_unlock(&l2_ucache_locks[cache_idx]);
+    instruction_count[vcpu_index * 8] += 1;
+
+    // insn_addr = ((InsnData *) userdata)->addr;
+
+    // cache_idx = vcpu_index % cores;
+    // g_mutex_lock(&l1_dcache_locks[cache_idx]);
+    // hit_in_l1 = access_cache(l1_dcaches[cache_idx], insn_addr);
+    // if (!hit_in_l1) {
+    //     insn = userdata;
+    //     __atomic_fetch_add(&insn->l1_dmisses, 1, __ATOMIC_SEQ_CST);
+    //     l1_dcaches[cache_idx]->misses++;
+    // }
+    // l1_dcaches[cache_idx]->accesses++;
+    // g_mutex_unlock(&l1_dcache_locks[cache_idx]);
+
+    // if (hit_in_l1 || !use_l2) {
+    //     /* No need to access L2 */
+    //     return;
+    // }
+
+    // g_mutex_lock(&l2_ucache_locks[cache_idx]);
+    // if (!access_cache(l2_ucaches[cache_idx], insn_addr)) {
+    //     insn = userdata;
+    //     __atomic_fetch_add(&insn->l2_misses, 1, __ATOMIC_SEQ_CST);
+    //     l2_ucaches[cache_idx]->misses++;
+    // }
+    // l2_ucaches[cache_idx]->accesses++;
+    // g_mutex_unlock(&l2_ucache_locks[cache_idx]);
 }
 
 static void vcpu_tb_trans(qemu_plugin_id_t id, struct qemu_plugin_tb *tb)
@@ -535,31 +552,27 @@ static void caches_free(Cache **caches)
     }
 }
 
-static void append_stats_line(GString *line, uint64_t l1_daccess,
-                              uint64_t l1_dmisses, uint64_t l1_iaccess,
-                              uint64_t l1_imisses,  uint64_t l2_access,
-                              uint64_t l2_misses)
-{
-    double l1_dmiss_rate, l1_imiss_rate, l2_miss_rate;
+static void append_stats_line(GString *line, uint64_t instructions, 
+                                uint64_t l1_accesses, uint64_t l1_misses, 
+                                uint64_t l2_accesses, uint64_t l2_misses        
+) {
 
-    l1_dmiss_rate = ((double) l1_dmisses) / (l1_daccess) * 100.0;
-    l1_imiss_rate = ((double) l1_imisses) / (l1_iaccess) * 100.0;
+    double l1_mpki = (double) l1_misses / instructions * 1000;
+    double l2_mpki = (double) l2_misses / instructions * 1000;
 
-    g_string_append_printf(line, "%-14lu %-12lu %9.4lf%%  %-14lu %-12lu"
-                           " %9.4lf%%",
-                           l1_daccess,
-                           l1_dmisses,
-                           l1_daccess ? l1_dmiss_rate : 0.0,
-                           l1_iaccess,
-                           l1_imisses,
-                           l1_iaccess ? l1_imiss_rate : 0.0);
+
+    g_string_append_printf(line, "%-14lu %-12lu %-12lu %9.4lf%%",
+                           instructions,
+                           l1_accesses,
+                           l1_misses,
+                           instructions ? l1_mpki : 0
+                           );
 
     if (use_l2) {
-        l2_miss_rate =  ((double) l2_misses) / (l2_access) * 100.0;
         g_string_append_printf(line, "  %-12lu %-11lu %10.4lf%%",
-                               l2_access,
+                               l2_accesses,
                                l2_misses,
-                               l2_access ? l2_miss_rate : 0.0);
+                               instructions ? l2_mpki : 0.0);
     }
 
     g_string_append(line, "\n");
@@ -612,12 +625,11 @@ static void log_stats(void)
     int i;
     Cache *icache, *dcache, *l2_cache;
 
-    g_autoptr(GString) rep = g_string_new("core #, data accesses, data misses,"
-                                          " dmiss rate, insn accesses,"
-                                          " insn misses, imiss rate");
+    g_autoptr(GString) rep = g_string_new("core #, instructions, L1 accesses, L1 misses,"
+                                          " L1 MPKI");
 
     if (use_l2) {
-        g_string_append(rep, ", l2 accesses, l2 misses, l2 miss rate");
+        g_string_append(rep, ", l2 accesses, l2 misses,  L2 MPKI");
     }
 
     g_string_append(rep, "\n");
@@ -627,22 +639,20 @@ static void log_stats(void)
         dcache = l1_dcaches[i];
         icache = l1_icaches[i];
         l2_cache = use_l2 ? l2_ucaches[i] : NULL;
-        append_stats_line(rep, dcache->accesses, dcache->misses,
-                icache->accesses, icache->misses,
+        append_stats_line(rep, instruction_count[i*8], dcache->accesses, dcache->misses,
                 l2_cache ? l2_cache->accesses : 0,
                 l2_cache ? l2_cache->misses : 0);
     }
 
-    if (cores > 1) {
-        sum_stats();
-        g_string_append_printf(rep, "%-8s", "sum");
-        append_stats_line(rep, l1_dmem_accesses, l1_dmisses,
-                l1_imem_accesses, l1_imisses,
-                l2_cache ? l2_mem_accesses : 0, l2_cache ? l2_misses : 0);
-    }
+    // if (cores > 1) {
+    //     sum_stats();
+    //     g_string_append_printf(rep, "%-8s", "sum");
+    //     append_stats_line(rep, l1_dmem_accesses, l1_dmisses,
+    //             l2_cache ? l2_mem_accesses : 0, l2_cache ? l2_misses : 0);
+    // }
 
     g_string_append(rep, "\n");
-    qemu_plugin_outs(rep->str);
+    puts(rep->str);
 }
 
 static void log_top_insns(void)
@@ -697,12 +707,13 @@ static void log_top_insns(void)
     }
 
 finish:
-    qemu_plugin_outs(rep->str);
+    puts(rep->str);
     g_list_free(miss_insns);
 }
 
 static void plugin_exit(qemu_plugin_id_t id, void *p)
 {
+    puts("Print cache plugin result.");
     log_stats();
     log_top_insns();
 
@@ -742,10 +753,20 @@ static void policy_init(void)
     }
 }
 
+
+static void *periodic_log_stats(void *) {
+    while (true) {
+        g_usleep(5*1000*1000);
+        log_stats();
+    }
+    return NULL;
+}
+
 QEMU_PLUGIN_EXPORT
 int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info,
                         int argc, char **argv)
 {
+    puts("Load Cache Plugin");
     int i;
     int l1_iassoc, l1_iblksize, l1_icachesize;
     int l1_dassoc, l1_dblksize, l1_dcachesize;
@@ -855,6 +876,11 @@ int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info,
     qemu_plugin_register_atexit_cb(id, plugin_exit, NULL);
 
     miss_ht = g_hash_table_new_full(NULL, g_direct_equal, NULL, insn_free);
+
+     // register a pthread to periodically print the cache stats
+    pthread_t thread;
+    pthread_create(&thread, NULL, (void *) periodic_log_stats, NULL);
+
 
     return 0;
 }

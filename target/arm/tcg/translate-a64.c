@@ -14170,15 +14170,7 @@ static void aarch64_tr_tb_stop(DisasContextBase *dcbase, CPUState *cpu)
         }
     } else {
         switch (dc->base.is_jmp) {
-        case DISAS_NEXT: // Please note that DISAS_NEXT requires waiting for the barrier. 
-            // if (single_instruction_quantum_enabled()) {
-            //     gen_a64_update_pc(dc, 4);
-            //     // I need to set up the quantum deplete flag.
-            //     // load the quantum_deplete flag
-            //     gen_helper_deplete_quantum_budget(cpu_env);
-            //     tcg_gen_exit_tb(NULL, 0); // exit, with IDX0, as the quantum deplete indication
-            //     break;
-            // }
+        case DISAS_NEXT: 
             gen_goto_tb(dc, 1, 4);
             break;
         case DISAS_TOO_MANY:

@@ -29,6 +29,8 @@
 #include "trace.h"
 #include "sysemu/kvm.h"
 #include "sysemu/qtest.h"
+#include "qemu/main-loop.h"
+
 
 /* #define DEBUG_GIC */
 
@@ -172,6 +174,13 @@ static inline void gic_update_internal(GICState *s, bool virt)
     qemu_irq *fiq_lines = virt ? s->parent_vfiq : s->parent_fiq;
 
     for (cpu = 0; cpu < s->num_cpu; cpu++) {
+        if (!qemu_mutex_iothread_locked() && current_cpu && cpu != current_cpu->cpu_index) {
+            // Well, this is a special case, because the timer interrupt is running on the local mode.
+            // It has to be the timer interrupt.
+            continue;
+        }
+
+
         cpu_iface = virt ? (cpu + GIC_NCPU) : cpu;
 
         s->current_pending[cpu_iface] = 1023;

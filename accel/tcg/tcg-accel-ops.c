@@ -26,6 +26,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "sysemu/quantum.h"
 #include "sysemu/tcg.h"
 #include "sysemu/replay.h"
 #include "sysemu/cpu-timers.h"
@@ -80,7 +81,12 @@ int tcg_cpus_exec(CPUState *cpu)
 /* mask must never be zero, except for A20 change call */
 void tcg_handle_interrupt(CPUState *cpu, int mask)
 {
-    g_assert(qemu_mutex_iothread_locked());
+    if (!quantum_enabled()) {
+        g_assert(qemu_mutex_iothread_locked());
+    } else if (!qemu_cpu_is_self(cpu)) {
+        g_assert(qemu_mutex_iothread_locked());
+    }
+
 
     cpu->interrupt_request |= mask;
 

@@ -8,6 +8,8 @@
 
 #include "qemu/osdep.h"
 #include "qemu/log.h"
+#include "qemu/plugin-cyan.h"
+#include "sysemu/quantum.h"
 #include "trace.h"
 #include "cpu.h"
 #include "internals.h"
@@ -18,6 +20,7 @@
 #include "qemu/crc32c.h"
 #include "qemu/qemu-print.h"
 #include "exec/exec-all.h"
+#include <stdlib.h>
 #include <zlib.h> /* For crc32 */
 #include "hw/irq.h"
 #include "sysemu/cpu-timers.h"
@@ -2607,12 +2610,18 @@ static uint64_t gt_get_countervalue(CPUARMState *env)
 {
     ARMCPU *cpu = env_archcpu(env);
 
-    return qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) / gt_cntfrq_period_ns(cpu);
+    if (quantum_enabled()) {
+      assert(current_cpu->env_ptr == env);
+      return cpu_virtual_time[current_cpu->cpu_index].vts / 100 / gt_cntfrq_period_ns(cpu);
+    } else {
+      return qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) / gt_cntfrq_period_ns(cpu);
+    }
 }
 
 static void gt_recalc_timer(ARMCPU *cpu, int timeridx)
 {
     ARMGenericTimer *gt = &cpu->env.cp15.c14_timer[timeridx];
+    CPUState *cpu_state = CPU(cpu);
 
     if (gt->ctl & 1) {
         /*
@@ -2634,9 +2643,20 @@ static void gt_recalc_timer(ARMCPU *cpu, int timeridx)
 
         // if (irqstate != 0) cpu->env.timer_interrupts_frequency[timeridx] += 1;
 
+        if (irqstate) {
+          cpu_state->private_timer_triggered += 1;
+          printf(
+            "[CPU%d] private_timer_triggered: %lu, at %lu, vts: %lu\n", 
+            cpu_state->cpu_index, 
+            cpu_state->private_timer_triggered, 
+            get_clock(),
+            cpu_virtual_time[cpu_state->cpu_index].vts
+          );
+        }
+
         if (istatus) {
             /*
-             * Next transition is when (count - offset) rolls back over to 0.
+             * Next transition is when (count - offset) gt_cntfrq_period_nsrolls back over to 0.
              * If offset > count then this is when count == offset;
              * if offset <= count then this is when count == offset + 2^64
              * For the latter case we set nexttick to an "as far in future
@@ -2668,6 +2688,19 @@ static void gt_recalc_timer(ARMCPU *cpu, int timeridx)
             timer_mod_ns(cpu->gt_timer[timeridx], INT64_MAX);
         } else {
             timer_mod(cpu->gt_timer[timeridx], nexttick);
+            printf(
+              "[CPU%d] timer_mod: %lu, at %lu, vts: %lu\n", 
+              cpu_state->cpu_index, 
+              nexttick, 
+              get_clock(),
+              cpu_virtual_time[cpu_state->cpu_index].vts
+            );
+
+            if (nexttick > 55000000000) {
+              printf("Catch you!\n");
+              printf("gt->cval: %lu, offset: %lu, count: %lu\n", gt->cval, offset, count);
+              abort();
+            }
         }
         trace_arm_gt_recalc(timeridx, irqstate, nexttick);
     } else {
@@ -2913,6 +2946,8 @@ static void gt_cntvoff_write(CPUARMState *env, const ARMCPRegInfo *ri,
                               uint64_t value)
 {
     ARMCPU *cpu = env_archcpu(env);
+
+    printf("gt_cntvoff_write: %lu\n", value);
 
     trace_arm_gt_cntvoff_write(value);
     raw_write(env, ri, value);
