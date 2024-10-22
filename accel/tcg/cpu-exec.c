@@ -952,7 +952,7 @@ static inline void cpu_loop_exec_tb(CPUState *cpu, TranslationBlock *tb,
 
     if (!icount_enabled()) {
         // nice. this is due to quantum deplete.
-        assert(cpu->quantum_budget_depleted == 1);
+        assert(cpu->quantum_budget_depleted);
         return;
     }
 

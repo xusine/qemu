@@ -53,12 +53,6 @@ uint32_t HELPER(check_and_deduce_quantum)(CPUArchState *env) {
     return false;
 }
 
-void HELPER(deplete_quantum_budget)(CPUArchState *env) {
-    assert(quantum_enabled());
-    current_cpu->quantum_budget = 0;
-    current_cpu->quantum_budget_depleted = 1;
-}
-
 void HELPER(set_quantum_requirement_example)(CPUArchState *env, uint32_t requirement) {
     assert(quantum_enabled() || icount_enabled());
     current_cpu->quantum_required = requirement;

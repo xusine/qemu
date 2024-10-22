@@ -303,7 +303,6 @@ DEF_HELPER_FLAGS_5(gvec_bitsel, TCG_CALL_NO_RWG, void, ptr, ptr, ptr, ptr, i32)
 DEF_HELPER_FLAGS_1(deduce_quantum, TCG_CALL_NO_RWG, void, env)
 DEF_HELPER_FLAGS_1(check_and_deduce_quantum, TCG_CALL_NO_RWG, i32, env)
 DEF_HELPER_FLAGS_2(set_quantum_requirement_example, TCG_CALL_NO_RWG, void, env, i32)
-DEF_HELPER_FLAGS_1(deplete_quantum_budget, TCG_CALL_NO_RWG, void, env)
 DEF_HELPER_FLAGS_1(increase_target_cycle, TCG_CALL_NO_RWG, void, env)
 
 // The following functions are added by Cyan to support taking time difference of one instruction.

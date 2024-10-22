@@ -25,6 +25,7 @@
 
 #include "qemu/osdep.h"
 #include "qemu/lockable.h"
+#include "qemu/timer.h"
 #include "sysemu/runstate.h"
 #include "sysemu/tcg.h"
 #include "sysemu/replay.h"
@@ -345,6 +346,7 @@ static void *rr_cpu_thread_fn(void *arg)
 
             // Synchronize the time.
             for (int i = 0; i < rr_cpu_count(); i++) {
+                assert(cpu_virtual_time[i].vts <= max_vtime);
                 cpu_virtual_time[i].vts = max_vtime;
             }
 
